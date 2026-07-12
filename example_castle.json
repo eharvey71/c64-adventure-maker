@@ -1,0 +1,47 @@
+{
+  "settings": {
+    "title": "THE HAUNTED CASTLE",
+    "author": "C64 Adventure Maker",
+    "version": "1.0",
+    "startroom": 1,
+    "maxscore": 200
+  },
+  "rooms": {
+    "1": {"name": "FOREST PATH", "description": "A WINDING DIRT PATH THROUGH DARK TREES. THE CASTLE LOOMS AHEAD TO THE SOUTH.", "exits": [0, 2, 0, 0]},
+    "2": {"name": "CASTLE GATE", "description": "AN IMPOSING IRON GATE BLOCKS YOUR WAY. IT'S LOCKED. TO THE NORTH IS THE FOREST PATH.", "exits": [1, 3, 0, 0]},
+    "3": {"name": "COURTYARD", "description": "CRUMBLING STONE COURTYARD WITH A DRY FOUNTAIN. DOORS LEAD NORTH TO THE GATE, SOUTH TO THE GREAT HALL, AND EAST TO THE KITCHEN.", "exits": [2, 4, 5, 0]},
+    "4": {"name": "GREAT HALL", "description": "A VAST HALL WITH TATTERED BANNERS ON THE WALLS. A WIZARD STANDS IN THE CORNER, STUDYING AN ANCIENT TOME.", "exits": [3, 0, 0, 0]},
+    "5": {"name": "KITCHEN", "description": "AN OLD KITCHEN WITH RUSTY POTS, PANS, AND PLENTY OF SHINY OBJECTS. A DOOR LEADS WEST BACK TO THE COURTYARD.", "exits": [0, 0, 0, 3]},
+    "6": {"name": "SECRET PASSAGE", "description": "A NARROW STONE PASSAGE LIT BY TORCHES. THIS MUST BE THE HIDDEN PASSAGE FROM THE CASTLE.", "exits": [0, 7, 2, 0]},
+    "7": {"name": "DUNGEON", "description": "A DANK UNDERGROUND CHAMBER FILLED WITH COBWEBS. THE AIR SMELLS OF ROT AND DECAY.", "exits": [6, 0, 0, 0]},
+    "8": {"name": "TREASURE VAULT", "description": "THE CASTLE'S TREASURE VAULT! GOLD GLITTERS IN THE DARKNESS.", "exits": [7, 0, 0, 0]}
+  },
+  "objects": {
+    "SWORD": {"name": "RUSTY SWORD", "start_room": 1, "description": "AN OLD SWORD WITH A DULL BLADE. STILL SHARP ENOUGH TO BE USEFUL.", "properties": "TAKEABLE"},
+    "KEY": {"name": "BRASS KEY", "start_room": 5, "description": "A SMALL ORNATE KEY. IT LOOKS LIKE IT MIGHT FIT THE IRON GATE.", "properties": "TAKEABLE"},
+    "GATE": {"name": "IRON GATE", "start_room": 2, "description": "A HEAVY GATE WITH A LARGE KEYHOLE. IT BLOCKS THE ENTRANCE TO THE CASTLE.", "properties": "FIXED"},
+    "BEAST": {"name": "FEARSOME BEAST", "start_room": 7, "description": "A HUGE SNARLING CREATURE WITH RAZOR CLAWS AND GLOWING RED EYES. IT BLOCKS THE WAY SOUTH.", "properties": "FIXED"},
+    "TREASURE": {"name": "GOLDEN CHALICE", "start_room": 8, "description": "A MAGNIFICENT GOLDEN CHALICE! IT'S ENCRUSTED WITH JEWELS.", "properties": "TAKEABLE"}
+  },
+  "vocabulary": {
+    "NORTH": ["N"], "SOUTH": ["S"], "EAST": ["E"], "WEST": ["W"], "LOOK": ["L"],
+    "TAKE": ["GET", "GRAB"], "DROP": ["LEAVE"], "EXAMINE": ["X", "INSPECT", "SEARCH"],
+    "INVENTORY": ["I", "INV"], "USE": ["WITH"], "TALK": ["SPEAK", "ASK"], "HIT": ["SLASH", "KILL"]
+  },
+  "messages": {
+    "WIZARD_GREETING": "THE WIZARD LOOKS UP FROM HIS TOME. 'AH, A BRAVE ADVENTURER! BRING ME THE GOLDEN CHALICE FROM THE VAULT BELOW AND I SHALL REWARD YOU HANDSOMELY.'"
+  },
+  "responses": [
+    {"command": "EXAMINE GATE", "condition": "", "message": "THE GATE HAS A LARGE KEYHOLE AND LOOKS VERY HEAVY.", "action": ""},
+    {"command": "EXAMINE KEY", "condition": "HAS KEY", "message": "THE KEY LOOKS LIKE IT MIGHT FIT THE IRON GATE.", "action": ""},
+    {"command": "EXAMINE SWORD", "condition": "HAS SWORD", "message": "IT'S OLD AND RUSTY, BUT STILL SHARP.", "action": ""},
+    {"command": "EXAMINE CHALICE", "condition": "HAS TREASURE", "message": "THE CHALICE IS BEAUTIFUL AND WORTH A FORTUNE!", "action": ""},
+    {"command": "EXAMINE BEAST", "condition": "NOT FLAG.BEAST_DEAD,AT 7", "message": "A HUGE SNARLING BEAST BLOCKS YOUR PATH SOUTH!", "action": ""},
+    {"command": "EXAMINE BEAST", "condition": "FLAG.BEAST_DEAD,AT 7", "message": "THE BEAST LIES DEFEATED ON THE DUNGEON FLOOR.", "action": ""},
+    {"command": "USE KEY GATE", "condition": "HAS KEY", "message": "THE KEY TURNS IN THE LOCK! THE GATE CREAKS OPEN. A SECRET PASSAGE IS REVEALED!", "action": "UNLOCK WEST 2 TO 6"},
+    {"command": "USE SWORD", "condition": "HAS SWORD,AT 7", "message": "YOU SLASH AT THE BEAST! IT FALLS DEFEATED!", "action": "SET FLAG.BEAST_DEAD,REMOVE BEAST,UNLOCK SOUTH 7 TO 8,SCORE 50"},
+    {"command": "HIT BEAST", "condition": "HAS SWORD,AT 7", "message": "YOU SLASH AT THE BEAST! IT FALLS DEFEATED!", "action": "SET FLAG.BEAST_DEAD,REMOVE BEAST,UNLOCK SOUTH 7 TO 8,SCORE 50"},
+    {"command": "TALK WIZARD", "condition": "AT 4", "message": "", "action": "MSG WIZARD_GREETING"},
+    {"command": "GIVE CHALICE WIZARD", "condition": "HAS TREASURE,AT 4", "message": "YOU PRESENT THE GOLDEN CHALICE TO THE WIZARD. HE SMILES KNOWINGLY AND THANKS YOU.", "action": "SCORE 150,WINXXX"}
+  ]
+}

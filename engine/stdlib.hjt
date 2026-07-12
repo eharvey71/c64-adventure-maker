@@ -1,0 +1,409 @@
+<Treepad version 3.0>
+dt=Text
+<node>
+main
+0
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+objclass
+1
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+scenery
+2
+attr:visible
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+sceneryobj
+2
+attr:visible+listable
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+normalobj
+2
+attr:visible+takeable+listable
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+actor
+2
+attr:actor+visible+listable
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+verbclass
+1
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+genericverb
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$none
+3
+msg:\V what?
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$unknown
+3
+msg:You don't see that
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$every
+3
+ifobjin:$this,$inventory
+	msg:You don't find a reason to do that
+else
+	ifobjin:$this,$here
+		msg:You don't find a reason to do that
+	else
+		msg:You don't see it here	
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+movementverb
+2
+msg:You can't go that way
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+movementverb
+1
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+u
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:u,up,go up
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+d
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:d,down,go down
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+s
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:s,south,go south
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+n
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:n,north,go north
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+w
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:w,west,go west
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+e
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:e,east,go east
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+se
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:se,southest,south-east,go southeast
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+sw
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:sw,southwest,south-west,go southwest
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+ne
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:ne,northeast,north-east,go northeast
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+nw
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:nw,nortwest,north-west,go northwest
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+genericverb
+1
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+x
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$none
+3
+msg:$roomdesc
+ifobjinattr:$any,$here,visible+listable
+	msg:You notice: +
+	listobjin:$here,visible+listable
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$every
+3
+ifobjin:$this,$inventory
+	msg:$objdesc
+else
+	ifobjinattr:$this,$here,visible
+		msg:$objdesc
+	else
+		msg:You don't see that here
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:x,examine,look,l,look at
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+take
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$every
+3
+ifobjinattr:$this,$here,visible
+	ifobj:$this,takeable		
+		putobj:$this,$inventory			
+		msg:Taken
+	else
+		msg:You don't want to take it		
+else
+	ifobjin:$this,$inventory
+		msg:You already have it
+	else
+		msg:You don't see it here
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:take,get,pick
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+drop
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+withobj:$every
+3
+ifobjin:$this,$inventory
+	ifobj:$this,takeable+visible
+		putobj:$this,$here
+		msg:Dropped
+	else
+		msg:You can't drop it
+else
+	msg:You don't have it
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:drop,put down
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+use
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+push
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+pull
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+open
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+close
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+lock
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+unlock
+2
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+verb
+1
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+$unknown
+2
+msg:You think that's not a wise idea
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+onfirst+onenter
+2
+clear
+msg:$roomdesc
+ifobjinattr:$any,$here,visible+listable
+	msg:You notice: +
+	listobjin:$here,visible+listable
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+inventory
+2
+ifobjinattr:$any,$inventory,takeable
+	msg:You are carrying: +
+	listobjin:$inventory,takeable
+else
+	msg:You aren't carrying anything.
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:inventory,i
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+score
+2
+msg:Your current score is +
+msgvar:score
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+quit
+2
+msg:Are you sure? (Y/N)
+getkey
+ifkey:Y
+	quit
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+syn:quit,q
+3
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+restart
+2
+msg:Are you sure? (Y/N)
+getkey
+ifkey:Y
+	start
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+save
+2
+save
+msg:Done
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+load
+2
+msg:Are you sure? (Y/N)
+getkey
+ifkey:Y
+	load
+
+<end node> 5P9i0s8y19Z
+dt=Text
+<node>
+mem
+2
+dbg
+
+<end node> 5P9i0s8y19Z

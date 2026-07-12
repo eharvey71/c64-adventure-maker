@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Editor per-user config (created on first build)
+c64kit_config.json
+
+# Build outputs
+builds/
+*.d64
+tmp.h
+tmp/
+advcartridge
+img/room*
+img/font
+png/*_C64_C64.png
+
+# Compiled binaries (build your own from StoryTllrC64 source + patches)
+tools/script_compiler
+
+# macOS
+.DS_Store
