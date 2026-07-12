@@ -2,6 +2,14 @@
 
 ## Run the editor
 
+First time on this machine? Build the game compiler once:
+
+```bash
+sh tools/setup_compiler.sh
+```
+
+Then:
+
 ```bash
 python3 adventure_editor_v7.py
 ```
@@ -58,8 +66,8 @@ it to real hardware.
 
 ## If something goes wrong
 
-- **"I couldn't find the StoryTllr compiler"** — copy your built
-  `script_compiler` into `tools/` (see the main README for building it).
+- **"I couldn't find the StoryTllr compiler"** — run
+  `sh tools/setup_compiler.sh` once.
 - **"VICE not found"** — install VICE; on macOS `brew install vice`.
 - **Garbled text or broken pictures on the C64** — your compiler is
   missing the required patches; run `tools/fix_storytllr_compiler.sh`

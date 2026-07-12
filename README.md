@@ -32,14 +32,19 @@ Marco Giorgini (MIT license) — see `engine/ATTRIBUTION.md`.
 2. **[VICE](https://vice-emu.sourceforge.io/)** — provides `c1541`
    (builds disk images) and `x64sc` (plays them).
    macOS: `brew install vice`
-3. **The StoryTllr `script_compiler`** — built once from the
-   [StoryTllrC64 source](https://github.com/MGProduction/StoryTllrC64)
-   **with the patches in `tools/fix_storytllr_compiler.sh` applied**
-   (they fix three upstream bugs that otherwise garble text and corrupt
-   or omit graphics). Copy the built binary into this repo's `tools/`
-   folder — the editor finds it there automatically.
+3. **A C compiler** (macOS: `xcode-select --install`) — used once by
+   the setup script below to build the StoryTllr `script_compiler`.
 
 ## Quick start
+
+One-time setup — builds the game compiler (downloads the StoryTllrC64
+source, applies the required patches, compiles):
+
+```bash
+sh tools/setup_compiler.sh
+```
+
+Then run the editor:
 
 ```bash
 python3 adventure_editor_v7.py
