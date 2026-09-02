@@ -17,8 +17,10 @@ emulator or on real hardware.
   edit it, with a debug mode that shows exactly how commands are parsed
 - **Room graphics** — import C64 Koala images (from Multipaint,
   Retropixels, Dithertron, ...) in the Scenes tab and attach them to rooms;
-  they appear on the C64's split screen. Rooms without art get a clean
-  colored placeholder automatically
+  they appear on the C64's split screen. The C64 shows a 96-row band of
+  each 200-row image, so the Scenes tab has a **visible band** slider and
+  dims the rows that won't ship — the preview matches the built disk.
+  Rooms without art get a clean colored placeholder automatically
 - **One-click C64 build** — converts, compiles, and builds the `.d64`,
   then offers to launch it in VICE
 - **No Python dependencies** — the editor uses only the standard library
@@ -99,7 +101,8 @@ script produced from `example_castle.json`; if you change the converter
 deliberately, regenerate it with `python3 tests/update_golden.py` and
 review the diff.
 
-CI byte-compiles the editor and runs the tests on Python 3.9–3.13,
+CI byte-compiles the editor and runs the tests (GUI smoke tests
+included, under Xvfb) on Python 3.9–3.13,
 enforces the 3.8 syntax floor, shellchecks `tools/*.sh`, and builds
 `script_compiler` from the pinned StoryTllrC64 commit on Linux and macOS.
 

@@ -44,13 +44,16 @@ python3 adventure_editor_v7.py
    [Dithertron](https://8bitworkshop.com/dithertron/) and save/export as
    Koala (`.koa`/`.kla`).
 2. **Scenes tab → Import Scene**, pick the file, give it a name.
-3. **Rooms tab** — select a room and choose the scene in its Scene
+3. Drag the **Visible band** slider until the bright strip covers the part
+   of the picture you want. The C64's split screen shows only **96 of the
+   image's 200 rows**; the dimmed rows will not appear on the disk. The
+   band starts centered, and **Center** puts it back.
+4. **Rooms tab** — select a room and choose the scene in its Scene
    dropdown.
 
-Rooms without a scene automatically get a simple colored placeholder —
-you can ship a game before the artwork is done. Note: the C64 shows the
-**top 96 of the image's 200 rows** on its split screen, so compose the
-important part of the picture in the upper half.
+Each scene remembers its own band, so two rooms can crop the same artwork
+differently. Rooms without a scene automatically get a simple colored
+placeholder — you can ship a game before the artwork is done.
 
 ## Build the C64 disk
 

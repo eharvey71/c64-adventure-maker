@@ -159,7 +159,30 @@ def decode_koala_to_rgb(raw_bytes):
     return bytes(px), 160, 200
 
 
-def koala_to_ppm_bytes(raw_bytes, x_scale=2, y_scale=1):
+# The C64 split screen shows a 96-row band of the 200-row Koala scene. The
+# band's top row (the "crop offset") must be cell-aligned — a multiple of 8 —
+# so the compiler's PNG->bitmap conversion round-trips losslessly.
+CROP_ROWS = 96                       # rows that reach the C64
+CROP_STEP = 8                        # cell alignment
+CROP_MAX  = 200 - CROP_ROWS          # 104: lowest legal band start
+CROP_CENTERED = ((CROP_MAX // 2) // CROP_STEP) * CROP_STEP   # 48
+
+# Preview styling for the rows that will not ship.
+BAND_DIM_NUM, BAND_DIM_DEN = 7, 25   # ~28% brightness outside the band
+BAND_EDGE_RGB = (0xff, 0x00, 0x80)   # marker rule at the band edges
+
+
+def normalize_crop_offset(value):
+    """Snap a crop offset to a legal, cell-aligned band start in 0..104."""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return 0
+    v = max(0, min(CROP_MAX, v))
+    return (v // CROP_STEP) * CROP_STEP
+
+
+def koala_to_ppm_bytes(raw_bytes, x_scale=2, y_scale=1, crop_offset=None):
     """
     Convert Koala to PPM P6 bytes suitable for tk.PhotoImage(data=...).
     Default scales (x=2, y=1) correct C64 multicolor pixel aspect (2:1 wide).
@@ -192,16 +215,47 @@ def koala_to_ppm_bytes(raw_bytes, x_scale=2, y_scale=1):
         base_y = sy * y_scale * row_size
         out[base_y : base_y + row_size * y_scale] = row * y_scale
 
+    if crop_offset is not None:
+        _dim_rows_outside_band(out, row_size, h, y_scale,
+                               normalize_crop_offset(crop_offset))
+
     header = f"P6\n{new_w} {new_h}\n255\n".encode("ascii")
     return header + bytes(out)
 
 
-def make_scene_photo(raw_bytes, x_scale=2, y_scale=1):
+def _dim_rows_outside_band(out, row_size, src_h, y_scale, crop_offset):
+    """
+    Darken every scaled row whose source row falls outside the 96-row band
+    starting at `crop_offset`, and draw a marker line at each band edge.
+    Mutates `out` in place.
+    """
+    for sy in range(src_h):
+        inside = crop_offset <= sy < crop_offset + CROP_ROWS
+        edge = sy in (crop_offset, crop_offset + CROP_ROWS - 1)
+        if inside and not edge:
+            continue
+        for rep in range(y_scale):
+            base = (sy * y_scale + rep) * row_size
+            row = out[base:base + row_size]
+            if edge:
+                # A bright rule so the band's top and bottom are unmistakable.
+                out[base:base + row_size] = bytes(BAND_EDGE_RGB) * (row_size // 3)
+            else:
+                out[base:base + row_size] = bytes(
+                    (v * BAND_DIM_NUM) // BAND_DIM_DEN for v in row)
+
+
+def make_scene_photo(raw_bytes, x_scale=2, y_scale=1, crop_offset=None):
     """
     Build a tk.PhotoImage from Koala bytes. Caller must keep a reference
     or Tk will garbage-collect the image and it'll disappear from the UI.
+
+    When `crop_offset` is given, rows outside the 96-row band that actually
+    reaches the C64 are dimmed and the band is marked, so the preview shows
+    what ships rather than the whole 200-row source.
     """
-    ppm = koala_to_ppm_bytes(raw_bytes, x_scale=x_scale, y_scale=y_scale)
+    ppm = koala_to_ppm_bytes(raw_bytes, x_scale=x_scale, y_scale=y_scale,
+                             crop_offset=crop_offset)
     return tk.PhotoImage(data=ppm, format="ppm")
 
 
@@ -247,10 +301,10 @@ def koala_to_room_png(koala_b64, out_path, crop_offset=0):
     of 8 (cell-aligned) in 0..104 so the compiler's PNG->bitmap conversion
     round-trips losslessly.
     """
-    crop_offset = max(0, min(104, (crop_offset // 8) * 8))
+    crop_offset = normalize_crop_offset(crop_offset)
     rgb, w, h = decode_koala_to_rgb(base64.b64decode(koala_b64))
     rgb_rows = []
-    for y in range(crop_offset, crop_offset + 96):
+    for y in range(crop_offset, crop_offset + CROP_ROWS):
         row = bytearray()
         src = y * w * 3
         for x in range(w):
@@ -761,11 +815,17 @@ class Converter:
             n = int(rid)
             out = png_dir / f"room{n:02d}_C64.png"
             sid = room.get("scene_id")
-            koala = self.scenes.get(sid, {}).get("koala_b64", "") if sid else ""
+            scene = self.scenes.get(sid, {}) if sid else {}
+            koala = scene.get("koala_b64", "")
             if koala:
+                # Per-scene framing wins; self.crop_offset is the fallback for
+                # scenes saved before the crop control existed.
+                offset = normalize_crop_offset(
+                    scene.get("crop_offset", self.crop_offset))
                 try:
-                    koala_to_room_png(koala, out, self.crop_offset)
-                    made.append((out.name, f"from scene {sid}"))
+                    koala_to_room_png(koala, out, offset)
+                    made.append((out.name, f"from scene {sid} (rows "
+                                           f"{offset}-{offset + CROP_ROWS - 1})"))
                     continue
                 except Exception as e:
                     self.warnings.append(
@@ -2072,7 +2132,8 @@ class AdventureEditor:
 
         preview_frame = tk.LabelFrame(
             right_frame,
-            text=f"Preview  (native C64 160×200 shown at {preview_w}×{preview_h} — same size as Player tab)",
+            text=(f"Preview  (native C64 160×200 at {preview_w}×{preview_h}) — "
+                  f"only the bright {CROP_ROWS}-row band reaches the C64"),
             bg=self.colors["bg_mid"], fg=self.colors["fg_hint"], font=self.fonts["sm"],
             bd=0, relief="flat", highlightthickness=0, padx=10, pady=10,
         )
@@ -2089,6 +2150,30 @@ class AdventureEditor:
         # Fixed pixel size — don't let it expand/shrink; images look sharpest
         # at their intended pixel dimensions.
         self.scene_preview_label.pack(pady=5)
+
+        # Crop band control — the C64 shows only CROP_ROWS of the 200 rows,
+        # so this picks which ones. Without it the export silently took the
+        # top 96 rows while this preview showed all 200.
+        crop_frame = ttk.Frame(right_frame)
+        crop_frame.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(crop_frame, text="Visible band:").pack(side=tk.LEFT, padx=5)
+
+        self.scene_crop_var = tk.IntVar(value=CROP_CENTERED)
+        self.scene_crop_scale = ttk.Scale(
+            crop_frame, from_=0, to=CROP_MAX, orient=tk.HORIZONTAL,
+            command=self.on_scene_crop_changed,
+        )
+        self.scene_crop_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+        self.scene_crop_label_var = tk.StringVar(value="")
+        tk.Label(
+            crop_frame, textvariable=self.scene_crop_label_var,
+            bg=self.colors["bg_dark"], fg=self.colors["fg_hint"],
+            font=self.fonts["sm"], width=22, anchor=tk.W,
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(crop_frame, text="Center",
+                   command=self.center_scene_crop).pack(side=tk.LEFT, padx=2)
 
         # Small "used by" hint
         self.scene_usage_var = tk.StringVar(value="")
@@ -2122,11 +2207,61 @@ class AdventureEditor:
         sdata = self.game["scenes"][sid]
         self.scene_id_var.set(sid)
         self.scene_name_var.set(sdata.get("name", ""))
+        self._load_scene_crop(sdata)
         self._render_scene_preview(sdata.get("koala_b64", ""))
         self._update_scene_usage_hint(sid)
 
+    def _scene_crop(self, sdata):
+        """The crop offset for a scene, defaulting as the converter does."""
+        return normalize_crop_offset(
+            sdata.get("crop_offset", STORYTLLR_CROP_OFFSET))
+
+    def _load_scene_crop(self, sdata):
+        """Sync the slider to the selected scene without firing a re-render."""
+        offset = self._scene_crop(sdata)
+        self._suspend_crop_trace = True
+        try:
+            self.scene_crop_scale.set(offset)
+            self.scene_crop_var.set(offset)
+        finally:
+            self._suspend_crop_trace = False
+        self._update_crop_label(offset)
+
+    def _update_crop_label(self, offset):
+        last = offset + CROP_ROWS - 1
+        self.scene_crop_label_var.set(f"rows {offset}-{last} of 200")
+
+    def on_scene_crop_changed(self, value):
+        """Slider moved: snap to a legal band, store it, re-render."""
+        if getattr(self, "_suspend_crop_trace", False):
+            return
+        sid = getattr(self, "_current_scene_id", None)
+        if not sid or sid not in self.game.get("scenes", {}):
+            return
+        offset = normalize_crop_offset(float(value))
+        if offset == self.scene_crop_var.get():
+            return                      # snapped back onto the same band
+        self.scene_crop_var.set(offset)
+        self.game["scenes"][sid]["crop_offset"] = offset
+        self._update_crop_label(offset)
+        self._render_scene_preview(self.game["scenes"][sid].get("koala_b64", ""))
+
+    def center_scene_crop(self):
+        """Reset the band to the middle of the image."""
+        sid = getattr(self, "_current_scene_id", None)
+        if not sid or sid not in self.game.get("scenes", {}):
+            messagebox.showinfo("Visible band", "Please select a scene first.")
+            return
+        self.game["scenes"][sid]["crop_offset"] = CROP_CENTERED
+        self._load_scene_crop(self.game["scenes"][sid])
+        self._render_scene_preview(self.game["scenes"][sid].get("koala_b64", ""))
+
     def _render_scene_preview(self, koala_b64):
-        """Decode and display a Koala scene in the Scenes-tab preview area."""
+        """Decode and display a Koala scene in the Scenes-tab preview area.
+
+        Rows outside the band that reaches the C64 are dimmed, so the preview
+        matches the built disk instead of showing all 200 source rows.
+        """
         if not koala_b64:
             self.scene_preview_label.config(image="", text="(no image data)")
             self._scene_preview_photo = None
@@ -2137,6 +2272,7 @@ class AdventureEditor:
                 raw,
                 x_scale=self.SCENE_PREVIEW_X_SCALE,
                 y_scale=self.SCENE_PREVIEW_Y_SCALE,
+                crop_offset=self.scene_crop_var.get(),
             )
         except Exception as e:
             self.scene_preview_label.config(image="", text=f"(error: {e})")
@@ -2207,6 +2343,9 @@ class AdventureEditor:
         existing[sid] = {
             "name": Path(path).stem,
             "koala_b64": base64.b64encode(payload).decode("ascii"),
+            # Centre the visible band by default; the Scenes tab slider
+            # adjusts it and the preview shows exactly what will ship.
+            "crop_offset": CROP_CENTERED,
         }
         self.refresh_scenes_list()
         # Select the newly-added scene
@@ -3475,6 +3614,13 @@ class AdventureEditor:
             self.scene_preview_label.config(image="", text="(select a scene to preview)")
             self._scene_preview_photo = None
             self.scene_usage_var.set("")
+            self.scene_crop_label_var.set("")
+            self._suspend_crop_trace = True
+            try:
+                self.scene_crop_scale.set(CROP_CENTERED)
+                self.scene_crop_var.set(CROP_CENTERED)
+            finally:
+                self._suspend_crop_trace = False
         # Room-editor scene display
         if hasattr(self, "room_scene_display_var"):
             self.room_scene_id = None

@@ -21,14 +21,15 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install Tkinter
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - name: Install Tkinter and a virtual display
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
 
       - name: Byte-compile the editor
         run: python -m py_compile adventure_editor_v7.py
 
+      # xvfb-run gives the GUI smoke tests a display; without one they skip.
       - name: Run tests
-        run: python -m unittest discover -s tests -v
+        run: xvfb-run -a python -m unittest discover -s tests -v
 
   syntax-floor:
     name: Python 3.8 syntax floor
