@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Tkinter
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      - name: Byte-compile the editor
+        run: python -m py_compile adventure_editor_v7.py
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+  syntax-floor:
+    name: Python 3.8 syntax floor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # README advertises Python 3.8+. Parsing with feature_version=(3, 8)
+      # rejects any newer grammar (walrus-in-comprehension, match, PEP 701
+      # f-strings, ...) without needing an EOL interpreter on the runner.
+      - name: Reject syntax newer than Python 3.8
+        run: |
+          python - <<'PY'
+          import ast, pathlib, sys
+          bad = False
+          for path in pathlib.Path(".").rglob("*.py"):
+              if ".git" in path.parts:
+                  continue
+              try:
+                  ast.parse(path.read_text(), filename=str(path),
+                            feature_version=(3, 8))
+              except SyntaxError as e:
+                  print(f"::error file={path},line={e.lineno}::"
+                        f"needs Python > 3.8: {e.msg}")
+                  bad = True
+          sys.exit(1 if bad else 0)
+          PY
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax-check
+        run: for f in tools/*.sh; do sh -n "$f"; done
+      - name: ShellCheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck --severity=warning tools/*.sh
+
+  compiler:
+    name: Build script_compiler from pinned source
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Proves the pin in setup_compiler.sh still matches the patches in
+      # fix_storytllr_compiler.sh, and that the shim still compiles.
+      - name: Run one-command setup
+        run: sh tools/setup_compiler.sh
+
+      - name: Compiler is executable
+        run: test -x tools/script_compiler

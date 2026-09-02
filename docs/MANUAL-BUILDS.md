@@ -49,13 +49,14 @@ three patches fix upstream bugs:
 ## B. Text-only build (original BASIC runtime)
 
 The project began as a text-only engine written in C64 BASIC
-(`legacy/advplay-c64-v3.bas`). It still works and the editor still
-supports it:
+(`advplay-c64-v3.bas`). The editor still exports for it, but **the BASIC
+runtime itself is not in this repository yet** — see `legacy/README.md`
+for what belongs there. Supply your own copy to follow these steps:
 
 1. **File → Export .adv** — writes the plain-text game file.
 2. Tokenize the runtime and build a disk (VICE tools):
    ```bash
-   petcat -w2 -o advplay.prg -- legacy/advplay-c64-v3.bas
+   petcat -w2 -o advplay.prg -- advplay-c64-v3.bas
    c1541 -format "adventure,01" d64 mygame.d64 \
          -write advplay.prg advplay \
          -write mygame.adv "mygame.adv,s"

@@ -1,0 +1,223 @@
+config
+	name:THE HAUNTED CASTLE
+	version:1.0
+	author:C64 Adventure Maker
+	engine:StoryTllrC64
+	font:..\shared\png\font.png
+	splity:96
+	binary:yes
+	imgfolder:img\
+include:stdlib.hjt
+verb:hit
+	syn:hit,slash,kill
+verb:talk
+	syn:talk,speak,ask
+verb:give
+sceneryobj:wizard
+	name:WIZARD
+	startin:room4
+	verb:talk
+		setvar:tmp,0
+		if:tmp=0
+			ifisroom:room4
+				setvar:tmp,1
+				msg:THE WIZARD LOOKS UP FROM HIS TOME. 'AH, A BRAVE ADVENTURER! BRING ME THE GOLDEN CHALICE FROM THE VAULT BELOW AND I SHALL REWARD YOU HANDSOMELY.'
+		if:tmp=0
+			msg:I DON'T UNDERSTAND THAT.
+normalobj:sword
+	name:RUSTY SWORD
+	desc:AN OLD SWORD WITH A DULL BLADE. STILL SHARP ENOUGH TO BE USEFUL.
+	startin:room1
+	verb:x
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:sword,$inventory
+				setvar:tmp,1
+				msg:IT'S OLD AND RUSTY, BUT STILL SHARP.
+		if:tmp=0
+			msg:$objdesc
+	verb:use
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:sword,$inventory
+				ifisroom:room7
+					setvar:tmp,1
+					msg:YOU SLASH AT THE BEAST! IT FALLS DEFEATED!
+					setvar:fbeastdead,1
+					unsetobj:beast,visible
+					setvar:ugs,1
+					addvar:score,50
+		if:tmp=0
+			msg:NOTHING HAPPENS.
+normalobj:key
+	name:BRASS KEY
+	desc:A SMALL ORNATE KEY. IT LOOKS LIKE IT MIGHT FIT THE IRON GATE.
+	startin:room5
+	verb:x
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:key,$inventory
+				setvar:tmp,1
+				msg:THE KEY LOOKS LIKE IT MIGHT FIT THE IRON GATE.
+		if:tmp=0
+			msg:$objdesc
+	verb:use
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:gate,$here
+				ifobjin:key,$inventory
+					setvar:tmp,1
+					msg:THE KEY TURNS IN THE LOCK! THE GATE CREAKS OPEN. A SECRET PASSAGE IS REVEALED!
+					setvar:ubw,1
+		if:tmp=0
+			msg:NOTHING HAPPENS.
+sceneryobj:gate
+	name:IRON GATE
+	desc:A HEAVY GATE WITH A LARGE KEYHOLE. IT BLOCKS THE ENTRANCE TO THE CASTLE.
+	startin:room2
+	verb:x
+		msg:THE GATE HAS A LARGE KEYHOLE AND LOOKS VERY HEAVY.
+sceneryobj:beast
+	name:FEARSOME BEAST
+	desc:A HUGE SNARLING CREATURE WITH RAZOR CLAWS AND GLOWING RED EYES. IT BLOCKS THE WAY SOUTH.
+	startin:room7
+	verb:x
+		setvar:tmp,0
+		if:tmp=0
+			if:fbeastdead=0
+				ifisroom:room7
+					setvar:tmp,1
+					msg:A HUGE SNARLING BEAST BLOCKS YOUR PATH SOUTH!
+		if:tmp=0
+			if:fbeastdead=1
+				ifisroom:room7
+					setvar:tmp,1
+					msg:THE BEAST LIES DEFEATED ON THE DUNGEON FLOOR.
+		if:tmp=0
+			msg:$objdesc
+	verb:hit
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:sword,$inventory
+				ifisroom:room7
+					setvar:tmp,1
+					msg:YOU SLASH AT THE BEAST! IT FALLS DEFEATED!
+					setvar:fbeastdead,1
+					unsetobj:beast,visible
+					setvar:ugs,1
+					addvar:score,50
+		if:tmp=0
+			msg:I DON'T UNDERSTAND THAT.
+normalobj:treasure
+	name:GOLDEN CHALICE
+	desc:A MAGNIFICENT GOLDEN CHALICE! IT'S ENCRUSTED WITH JEWELS.
+	syn:chalice,treasure
+	startin:room8
+	verb:x
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:treasure,$inventory
+				setvar:tmp,1
+				msg:THE CHALICE IS BEAUTIFUL AND WORTH A FORTUNE!
+		if:tmp=0
+			msg:$objdesc
+	verb:give
+		setvar:tmp,0
+		if:tmp=0
+			ifobjin:wizard,$here
+				ifobjin:treasure,$inventory
+					ifisroom:room4
+						setvar:tmp,1
+						msg:YOU PRESENT THE GOLDEN CHALICE TO THE WIZARD. HE SMILES KNOWINGLY AND THANKS YOU.
+						addvar:score,150
+						msg:CONGRATULATIONS! YOU HAVE WON!
+						msg:PLAY AGAIN? (Y/N)
+						getkey
+						ifkey:Y
+							start
+						else
+							quit
+		if:tmp=0
+			msg:I DON'T UNDERSTAND THAT.
+room:room1
+	name:FOREST PATH
+	desc:A WINDING DIRT PATH THROUGH DARK TREES. THE CASTLE LOOMS AHEAD TO THE SOUTH.
+	image:png\room01_C64.png
+	verb:s
+		goto:room2
+room:room2
+	name:CASTLE GATE
+	desc:AN IMPOSING IRON GATE BLOCKS YOUR WAY. IT'S LOCKED. TO THE NORTH IS THE FOREST PATH.
+	image:png\room02_C64.png
+	verb:n
+		goto:room1
+	verb:s
+		goto:room3
+	verb:w
+		if:ubw=1
+			goto:room6
+		else
+			msg:YOU CAN'T GO THAT WAY.
+room:room3
+	name:COURTYARD
+	desc:CRUMBLING STONE COURTYARD WITH A DRY FOUNTAIN. DOORS LEAD NORTH TO THE GATE, SOUTH TO THE GREAT HALL, AND EAST TO THE KITCHEN.
+	image:png\room03_C64.png
+	verb:n
+		goto:room2
+	verb:s
+		goto:room4
+	verb:e
+		goto:room5
+room:room4
+	name:GREAT HALL
+	desc:A VAST HALL WITH TATTERED BANNERS ON THE WALLS. A WIZARD STANDS IN THE CORNER, STUDYING AN ANCIENT TOME.
+	image:png\room04_C64.png
+	verb:n
+		goto:room3
+room:room5
+	name:KITCHEN
+	desc:AN OLD KITCHEN WITH RUSTY POTS, PANS, AND PLENTY OF SHINY OBJECTS. A DOOR LEADS WEST BACK TO THE COURTYARD.
+	image:png\room05_C64.png
+	verb:w
+		goto:room3
+room:room6
+	name:SECRET PASSAGE
+	desc:A NARROW STONE PASSAGE LIT BY TORCHES. THIS MUST BE THE HIDDEN PASSAGE FROM THE CASTLE.
+	image:png\room06_C64.png
+	verb:s
+		goto:room7
+	verb:e
+		goto:room2
+room:room7
+	name:DUNGEON
+	desc:A DANK UNDERGROUND CHAMBER FILLED WITH COBWEBS. THE AIR SMELLS OF ROT AND DECAY.
+	image:png\room07_C64.png
+	verb:n
+		goto:room6
+	verb:s
+		if:ugs=1
+			goto:room8
+		else
+			msg:YOU CAN'T GO THAT WAY.
+room:room8
+	name:TREASURE VAULT
+	desc:THE CASTLE'S TREASURE VAULT! GOLD GLITTERS IN THE DARKNESS.
+	image:png\room08_C64.png
+	verb:n
+		goto:room7
+room:$start
+	image:png\room01_C64.png
+	onfirst
+		clear
+		msg:\c\y##NAME##
+			\c
+			\c\wby ##AUTHOR##
+			\c
+			\c\gVersion ##VERSION##
+		waitkey
+		setvar:score,0
+		setvar:tmp,0
+		setvar:fbeastdead,0
+		setvar:ubw,0
+		setvar:ugs,0
+		goto:room1

@@ -1,5 +1,7 @@
 # C64 Adventure Maker
 
+[![CI](https://github.com/eharvey71/c64-adventure-maker/actions/workflows/ci.yml/badge.svg)](https://github.com/eharvey71/c64-adventure-maker/actions/workflows/ci.yml)
+
 Make **graphical text adventures for the Commodore 64**. Design your game in
 a friendly cross-platform editor, test it instantly, then build a
 ready-to-play `.d64` disk image with one menu click — playable in the VICE
@@ -31,7 +33,9 @@ Marco Giorgini (MIT license) — see `engine/ATTRIBUTION.md`.
 1. **Python 3.8+** with Tkinter (`python3 -m tkinter` should open a window)
 2. **[VICE](https://vice-emu.sourceforge.io/)** — provides `c1541`
    (builds disk images) and `x64sc` (plays them).
-   macOS: `brew install vice`
+   macOS: `brew install vice` · Debian/Ubuntu: `sudo apt install vice`
+   The editor finds them on `PATH` or in the usual install locations on
+   macOS, Linux, and Windows; otherwise it asks once and remembers.
 3. **A C compiler** (macOS: `xcode-select --install`) — used once by
    the setup script below to build the StoryTllr `script_compiler`.
 
@@ -75,11 +79,29 @@ adventure_editor_v7.py    the editor
 example_castle.json       sample game
 engine/                   bundled StoryTllrC64 runtime files
                           (player program, standard library, font)
-tools/                    compiler patch script; put your built
-                          script_compiler here (not committed)
+tools/                    compiler setup + patch scripts; the built
+                          script_compiler lands here (not committed)
+tests/                    converter and game-engine tests
 docs/                     guides
-legacy/                   the original text-only BASIC runtime era
+legacy/                   reserved for the original text-only BASIC
+                          runtime (not committed yet)
 ```
+
+## Development
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+The converter and game-engine layers import without Tkinter, so the tests
+run headless. `tests/golden/example_castle.hjt` pins the exact StoryTllr
+script produced from `example_castle.json`; if you change the converter
+deliberately, regenerate it with `python3 tests/update_golden.py` and
+review the diff.
+
+CI byte-compiles the editor and runs the tests on Python 3.9–3.13,
+enforces the 3.8 syntax floor, shellchecks `tools/*.sh`, and builds
+`script_compiler` from the pinned StoryTllrC64 commit on Linux and macOS.
 
 ## Running your game on real hardware
 
@@ -88,6 +110,7 @@ Kung Fu Flash, or a real 1541 drive with a transfer cable.
 
 ## License
 
-Editor and converter: use and modify freely.
-Bundled engine files: MIT — StoryTllrC64 © Marco Giorgini
-(`engine/ATTRIBUTION.md`).
+MIT — see [LICENSE](LICENSE).
+
+Bundled engine files in `engine/` are MIT as well: StoryTllrC64
+© Marco Giorgini (`engine/ATTRIBUTION.md`).

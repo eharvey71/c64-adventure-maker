@@ -30,15 +30,43 @@ NOTE: the StoryTllr compiler needs the patches in fix_storytllr_compiler.sh
 missing or corrupt.
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+except ImportError:  # pragma: no cover - headless environments
+    # The editor UI needs Tkinter, but Converter/GameEngine do not. Keeping
+    # the import optional lets the conversion and game-logic layers be
+    # imported (and tested) on machines with no GUI toolkit installed.
+    tk = ttk = filedialog = messagebox = None
 import base64
+import glob
 import json
 import copy
+import os
 import shutil
 import struct
 import zlib
 from pathlib import Path
+
+
+# Directories searched for the VICE tools (c1541, x64sc) when they are not
+# already on PATH. `~` expands to the home directory; glob wildcards are
+# allowed, since VICE ships under version-stamped folder names.
+VICE_DIRS = [
+    # macOS — Homebrew, MacPorts, and the official .app-style distributions
+    "/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin",
+    "/Applications/vice-*/bin",
+    "/Applications/VICE/*.app/Contents/Resources/bin",
+    "~/Applications/vice-*/bin",
+    # Linux — distro packages land on PATH, but snap/flatpak/manual do not
+    "/usr/bin", "/usr/local/bin", "/usr/games",
+    "/snap/bin", "/var/lib/flatpak/exports/bin",
+    "~/.local/bin", "~/vice/bin", "/opt/vice/bin",
+    # Windows
+    "C:/Program Files/VICE*", "C:/Program Files/VICE*/bin",
+    "C:/Program Files (x86)/VICE*", "C:/Program Files (x86)/VICE*/bin",
+    "C:/vice*", "C:/vice*/bin",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -583,12 +611,12 @@ class Converter:
         lines.append(f"{ti}setvar:tmp,0")
         for branch in branches:
             depth = ind
-            lines.append(f"{'\t' * depth}if:tmp=0")
+            lines.append("\t" * depth + "if:tmp=0")
             depth += 1
             for cond in branch["conditions"]:
-                lines.append(f"{'\t' * depth}{cond}")
+                lines.append("\t" * depth + cond)
                 depth += 1
-            lines.append(f"{'\t' * depth}setvar:tmp,1")
+            lines.append("\t" * depth + "setvar:tmp,1")
             lines += self.emit_branch_body(branch, depth)
 
         # fallback, replicating the BASIC path when no response matched
@@ -2991,7 +3019,11 @@ class AdventureEditor:
             pass  # config is a convenience; never block on it
 
     def _find_tool(self, cfg_key, names, extra_dirs):
-        """Locate a tool: saved config, then PATH, then common locations."""
+        """Locate a tool: saved config, then PATH, then common locations.
+
+        `extra_dirs` entries may contain `~` and glob wildcards (VICE ships
+        under version-stamped directory names on macOS and Windows).
+        """
         cfg = self._load_kit_config()
         saved = cfg.get(cfg_key)
         if saved and Path(saved).exists():
@@ -3002,31 +3034,34 @@ class AdventureEditor:
                 return found
         home = Path.home()
         for d in extra_dirs:
-            for n in names:
-                p = Path(str(d).replace("~", str(home))) / n
-                if p.exists():
-                    return str(p)
+            pattern = str(d).replace("~", str(home))
+            roots = sorted(glob.glob(pattern)) if any(
+                c in pattern for c in "*?[") else [pattern]
+            for root in roots:
+                for n in names:
+                    p = Path(root) / n
+                    if p.exists():
+                        return str(p)
         return None
 
     def _find_script_compiler(self):
         return self._find_tool(
-            "script_compiler", ["script_compiler"],
+            "script_compiler", self._exe_names("script_compiler"),
             [self._kit_dir(), self._kit_dir() / "tools",
              "~/dev/storytllr-mac-port"])
 
     def _find_c1541(self):
         return self._find_tool(
-            "c1541", ["c1541"],
-            ["/opt/homebrew/bin", "/usr/local/bin",
-             "/Applications/vice-arm64-gtk3-3.8/bin",
-             "/Applications/vice-x86-64-gtk3-3.8/bin"])
+            "c1541", self._exe_names("c1541"), VICE_DIRS)
 
     def _find_x64sc(self):
         return self._find_tool(
-            "x64sc", ["x64sc"],
-            ["/opt/homebrew/bin", "/usr/local/bin",
-             "/Applications/vice-arm64-gtk3-3.8/bin",
-             "/Applications/vice-x86-64-gtk3-3.8/bin"])
+            "x64sc", self._exe_names("x64sc"), VICE_DIRS)
+
+    @staticmethod
+    def _exe_names(stem):
+        """Executable file names to try for `stem` on this platform."""
+        return [stem + ".exe", stem] if os.name == "nt" else [stem]
 
     def export_and_build(self):
         """File > Export & Build C64 Disk... — entry point."""
@@ -3447,6 +3482,14 @@ class AdventureEditor:
 
 
 if __name__ == "__main__":
+    if tk is None:
+        raise SystemExit(
+            "The editor needs Tkinter, which this Python cannot import.\n"
+            "  Debian/Ubuntu: sudo apt install python3-tk\n"
+            "  Fedora:        sudo dnf install python3-tkinter\n"
+            "  macOS:         brew install python-tk\n"
+            "Check with: python3 -m tkinter"
+        )
     root = tk.Tk()
     app = AdventureEditor(root)
     root.mainloop()
