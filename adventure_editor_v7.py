@@ -1385,9 +1385,70 @@ class AdventureEditor:
         btn_hover_bg   = "#3a3a40"   # button hover background
         btn_hover_fg   = "#e8a050"   # button hover text
 
+        # ── Control chrome ───────────────────────────────────────
+        # Borders and slider parts. These are deliberately high-luminance-
+        # contrast against their own backgrounds rather than distinguished by
+        # hue, so they stay visible with any color vision deficiency.
+        border_col = "#7a7a85"   # 4.0:1 on bg_dark, 3.4:1 on bg_light — meets
+                                 # WCAG 1.4.11 (3:1) for non-text UI controls
+        trough_bg  = "#141416"   # slider trough — near black
+        slider_fg  = "#e8e6e1"   # slider thumb — near white (~13:1 on trough)
+
         # ── ttk widget styles ────────────────────────────────────
+        # Clam's default bevel colors are light grey (#eeebe7 / #9e9a91). They
+        # are inherited by every widget and render as a bright frame around
+        # dark fills — especially heavy on macOS. Override them at the root
+        # style so nothing gets a light border by default.
+        style.configure(".",
+                        background=bg_dark,
+                        foreground=fg_primary,
+                        bordercolor=border_col,
+                        lightcolor=bg_light,
+                        darkcolor=bg_dark,
+                        troughcolor=trough_bg,
+                        focuscolor=teal)
+
         style.configure("TFrame",
                         background=bg_dark)
+
+        # Crop-band slider. Previously unstyled, so it inherited clam's light
+        # defaults: a #dcdad5 thumb on a #bab5ab trough is a 1.5:1 contrast
+        # ratio — the thumb was invisible. Light thumb on a near-black trough
+        # is ~13:1 and, being a luminance difference rather than a hue one,
+        # stays legible with any form of color vision deficiency.
+        style.configure("Band.Horizontal.TScale",
+                        background=slider_fg,
+                        troughcolor=trough_bg,
+                        bordercolor=border_col,
+                        lightcolor=slider_fg,
+                        darkcolor=slider_fg,
+                        borderwidth=1)
+
+        style.map("Band.Horizontal.TScale",
+                  background=[("active", teal), ("pressed", teal)],
+                  lightcolor=[("active", teal), ("pressed", teal)],
+                  darkcolor=[("active", teal), ("pressed", teal)])
+
+        # Dropdowns (the room's Scene picker). ttk + clam draws these itself,
+        # so they look the same on macOS as elsewhere; tk.Menubutton lets
+        # Aqua override the colors and render a native light control.
+        style.configure("Picker.TMenubutton",
+                        background=bg_light,
+                        foreground=fg_primary,
+                        bordercolor=border_col,
+                        lightcolor=bg_light,
+                        darkcolor=bg_light,
+                        arrowcolor=fg_hint,
+                        borderwidth=1,
+                        relief="solid",
+                        padding=[8, 4],
+                        font=font_md)
+
+        style.map("Picker.TMenubutton",
+                  background=[("active", btn_hover_bg)],
+                  foreground=[("active", btn_hover_fg)],
+                  bordercolor=[("active", teal)],
+                  arrowcolor=[("active", btn_hover_fg)])
 
         style.configure("TLabelframe",
                         background=bg_mid,
@@ -1484,6 +1545,11 @@ class AdventureEditor:
             "settings_entry_fg":    fg_primary,
 
             # Rooms tab
+            # Control chrome (borders, slider parts)
+            "border":               border_col,
+            "trough_bg":            trough_bg,
+            "slider_fg":            slider_fg,
+
             "room_list_bg":         "#252530",
             "room_list_fg":         fg_primary,
             "room_field_bg":        "#2a2a2e",
@@ -2007,15 +2073,16 @@ class AdventureEditor:
         self.room_scene_display_var = tk.StringVar(value="(none)")
         self.room_scene_id          = None   # actual scene id (or None), NOT trace-bound
 
-        self.room_scene_menubutton = tk.Menubutton(
+        # ttk (clam) rather than tk.Menubutton: on macOS the Aqua theme
+        # ignores a tk.Menubutton's bg/fg and draws a native light control,
+        # which is unreadable inside this dark UI. clam draws it itself, so
+        # the styling below applies on every platform.
+        self.room_scene_menubutton = ttk.Menubutton(
             scene_frame,
             textvariable=self.room_scene_display_var,
-            bg=self.colors["room_field_bg"], fg=self.colors["room_field_fg"],
-            activebackground=self.colors["btn_hover_bg"],
-            activeforeground=self.colors["btn_hover_fg"],
-            font=self.fonts["md"],
-            bd=0, relief="flat", highlightthickness=0,
-            anchor=tk.W, padx=8, pady=3, width=32,
+            style="Picker.TMenubutton",
+            direction="below",
+            width=32,
         )
         self.room_scene_menubutton.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
@@ -2161,6 +2228,7 @@ class AdventureEditor:
         self.scene_crop_var = tk.IntVar(value=CROP_CENTERED)
         self.scene_crop_scale = ttk.Scale(
             crop_frame, from_=0, to=CROP_MAX, orient=tk.HORIZONTAL,
+            style="Band.Horizontal.TScale",
             command=self.on_scene_crop_changed,
         )
         self.scene_crop_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
