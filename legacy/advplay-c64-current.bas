@@ -93,7 +93,8 @@
 2082 if k$="version" then gv$=v$
 2083 if k$="startroom" then sr=val(v$)
 2084 if k$="maxscore" then ms=val(v$)
-2085 return
+2085 if k$="winmessage" then gw$=v$
+2090 return
 2130 rem
 2500 rem *** parse rooms ***
 2509 if l$="" then return
@@ -484,6 +485,8 @@
 15070 if left$(ac$,8)="move to " then goto 15100
 15080 rem check for "set flag"
 15085 if left$(ac$,9)="set flag." then goto 15200
+15086 rem check for "win"
+15087 if left$(ac$,3)="win" then goto 15900
 15090 return
 15100 rem *** move to room ***
 15110 t$="":for k=9 to len(ac$):t$=t$+mid$(ac$,k,1):next k
@@ -564,3 +567,10 @@
 15870 if fi=2 then ee=v
 15880 if fi=3 then ew=v
 15890 return
+15900 rem *** win the game ***
+15910 if gw$<>"" then print gw$
+15920 if gw$="" then print "congratulations! you have won!"
+15930 print "final score:";sc;" of";ms
+15940 print
+15950 print "the end."
+15960 end
