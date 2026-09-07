@@ -3825,8 +3825,11 @@ class AdventureEditor:
             line = f"{resp['command']}:{resp['condition']}:{resp['message']}:{resp['action']}"
             lines.append(line)
 
-        return "\n".join(lines)
-    
+        # The C64's default character set shows uppercase for codes 0x41-0x5A
+        # and graphics for lowercase, so mixed-case text renders as garbage.
+        # Author names in particular came through as line noise.
+        return "\n".join(lines).upper()
+
     def refresh_all(self):
         self.map_positions = {}
         self._selected_map_room = None

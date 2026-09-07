@@ -204,6 +204,7 @@
 5160 gosub 7000:rem to uppercase
 5170 c$=uc$:rem **C$ is now ALL UPPERCASE**
 5175 gosub 7100:rem expand vocabulary synonyms
+5177 gosub 7200:rem drop filler words
 5180 rem
 5190 rem check for basic commands
 5200 if c$="quit" or c$="q" then input "really (y or n)";b$
@@ -313,6 +314,23 @@
 7195 next i
 7198 return
 7199 rem
+7200 rem *** drop filler words from the command ***
+7205 rem lets "give chalice to wizard" match "give chalice wizard"
+7210 zf$=" to ":gosub 7250
+7215 zf$=" on ":gosub 7250
+7220 zf$=" with ":gosub 7250
+7225 zf$=" at ":gosub 7250
+7230 zf$=" the ":gosub 7250
+7235 zf$=" into ":gosub 7250
+7240 return
+7245 rem
+7250 rem replace every zf$ in c$ with one space
+7255 zg=len(zf$)
+7260 for zh=1 to len(c$)
+7265   if mid$(c$,zh,zg)=zf$ then c$=left$(c$,zh-1)+" "+mid$(c$,zh+zg)
+7270 next zh
+7275 return
+7280 rem
 8000 rem *** show inventory ***
 8010 print:print "you are carrying:"
 8020 if ic=0 then print "nothing":return
@@ -486,7 +504,7 @@
 14020 zc$=co$+","
 14025 zp=1
 14030 for zq=1 to len(zc$)
-14035   if mid$(zc$,zq,1)<>"," then 14055
+14035   if mid$(zc$,zq,1)<>"," then 14060
 14040   zt$=mid$(zc$,zp,zq-zp)
 14045   gosub 14400
 14050   if zv=0 then co=0:zq=len(zc$)
