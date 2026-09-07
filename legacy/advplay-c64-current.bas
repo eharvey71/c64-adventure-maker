@@ -203,6 +203,7 @@
 5150 rem normalize command to uppercase
 5160 gosub 7000:rem to uppercase
 5170 c$=uc$:rem **C$ is now ALL UPPERCASE**
+5175 gosub 7100:rem expand vocabulary synonyms
 5180 rem
 5190 rem check for basic commands
 5200 if c$="quit" or c$="q" then input "really (y or n)";b$
@@ -286,6 +287,30 @@
 7070 next i
 7080 return
 7090 rem
+7100 rem *** expand first word via vocabulary ***
+7105 rem maps a synonym onto its canonical word, so a game's
+7106 rem [vocabulary] table finally has an effect here.
+7110 if nv=0 then return
+7115 sp=0
+7120 for i=1 to len(c$)
+7125   if mid$(c$,i,1)=" " then sp=i:i=len(c$)
+7130 next i
+7135 if sp=0 then fw$=c$:rw$=""
+7140 if sp>0 then fw$=left$(c$,sp-1):rw$=mid$(c$,sp)
+7145 rem walk the table looking for the typed word
+7150 for i=1 to nv
+7155   if v$(i,0)=fw$ then return:rem already canonical
+7160   sy$=v$(i,1)+","
+7165   pv=1
+7170   for j=1 to len(sy$)
+7175     if mid$(sy$,j,1)<>"," then 7190
+7180     tw$=mid$(sy$,pv,j-pv)
+7185     if tw$=fw$ then c$=v$(i,0)+rw$:return
+7188     pv=j+1
+7190   next j
+7195 next i
+7198 return
+7199 rem
 8000 rem *** show inventory ***
 8010 print:print "you are carrying:"
 8020 if ic=0 then print "nothing":return
