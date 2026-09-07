@@ -392,9 +392,10 @@
 11210 return
 11220 rem
 12000 rem *** examine object ***
-12010 if len(c$)<=8 then print "examine what?":return
-12020 if left$(c$,7)="examine" then o$=mid$(c$,9)
-12030 if left$(c$,4)="look" then o$=mid$(c$,9)
+12010 o$="":rem each verb has its own length
+12020 if left$(c$,7)="examine" then if len(c$)>8 then o$=mid$(c$,9)
+12030 if left$(c$,4)="look" then if len(c$)>5 then o$=mid$(c$,6)
+12035 if o$="" then print "examine what?":return
 12040 rem
 12050 rem find object (in room or inventory)
 12060 f=0
