@@ -487,6 +487,8 @@
 15085 if left$(ac$,9)="set flag." then goto 15200
 15086 rem check for "win"
 15087 if left$(ac$,3)="win" then goto 15900
+15088 rem check for "score"
+15089 if left$(ac$,6)="score " then goto 16000
 15090 return
 15100 rem *** move to room ***
 15110 t$="":for k=9 to len(ac$):t$=t$+mid$(ac$,k,1):next k
@@ -574,3 +576,11 @@
 15940 print
 15950 print "the end."
 15960 end
+16000 rem *** add to score ***
+16010 rem format: score nnn
+16020 t$=""
+16030 for k=7 to len(ac$)
+16040   if mid$(ac$,k,1)>="0" and mid$(ac$,k,1)<="9" then t$=t$+mid$(ac$,k,1)
+16050 next k
+16060 sc=sc+val(t$)
+16070 return
