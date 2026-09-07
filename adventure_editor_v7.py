@@ -343,6 +343,75 @@ def placeholder_room_png(room_num, out_path):
     write_png(out_path, 320, 96, rgb_rows)
 
 
+# ---------------------------------------------------------------------------
+# TEXT-ENGINE COMPATIBILITY
+# ---------------------------------------------------------------------------
+# What legacy/advplay-c64-current.bas can actually carry out, established by
+# reading that runtime and confirming each item on hardware:
+#
+#   * Only USE reaches the response table. Line 5390 is the single route into
+#     the scanner, so EXAMINE, TAKE and every other verb never consult it.
+#   * Conditions: HAS <object> and FLAG.<name>, one per response. The handler
+#     at 14000 tests the whole string, so a comma list breaks even the part it
+#     would otherwise understand, and an unrecognised condition falls through
+#     with the result still set to true.
+#   * Actions: UNLOCK, MOVE TO, SET FLAG, WIN and SCORE, one per response. The
+#     dispatcher at 15000 tests the whole string, so only the first of a comma
+#     list runs. REMOVE has no implementation at all.
+#
+# The graphical (StoryTllr) target has none of these limits.
+
+BASIC_RESPONSE_VERBS = {"USE"}
+BASIC_CONDITION_PREFIXES = ("HAS ", "FLAG.")
+BASIC_ACTION_PREFIXES = ("UNLOCK ", "MOVE TO ", "SET FLAG.", "SCORE ", "WIN")
+
+
+def basic_incompatibilities(resp):
+    """Reasons a response will not behave in the text engine as written.
+
+    Returns a list of plain sentences, empty when the response works in both
+    targets. Order is the order an author would hit them: command, then
+    condition, then action.
+    """
+    reasons = []
+
+    cmd = (resp.get("command") or "").strip().upper()
+    verb = cmd.split()[0] if cmd.split() else ""
+    if not verb:
+        reasons.append("No command, so nothing can match it.")
+    elif verb not in BASIC_RESPONSE_VERBS:
+        article = "an" if verb[0] in "AEIOU" else "a"
+        reasons.append(
+            f"The text engine only consults responses for USE, so "
+            f"{article} {verb} response never runs there.")
+
+    cond = (resp.get("condition") or "").strip().upper()
+    if cond:
+        if "," in cond:
+            reasons.append(
+                "The text engine reads one condition only; everything from "
+                "the first comma onward is ignored, which also breaks the "
+                "part before it.")
+        elif not cond.startswith(BASIC_CONDITION_PREFIXES):
+            reasons.append(
+                f"The text engine understands only HAS and FLAG conditions. "
+                f"'{cond}' is skipped and treated as true, so this response "
+                f"fires when it should not.")
+
+    action = (resp.get("action") or "").strip().upper()
+    if action:
+        if "," in action:
+            first = action.split(",")[0].strip()
+            reasons.append(
+                f"The text engine runs one action per response, so only "
+                f"'{first}' happens and the rest are dropped.")
+        elif not action.startswith(BASIC_ACTION_PREFIXES):
+            reasons.append(
+                f"The text engine has no '{action.split()[0]}' action.")
+
+    return reasons
+
+
 DIR_NAMES = ["NORTH", "SOUTH", "EAST", "WEST"]      # exits[] index order
 DIR_VERBS = ["n", "s", "e", "w"]
 DIR_SHORT = {"NORTH": "n", "SOUTH": "s", "EAST": "e", "WEST": "w"}
@@ -2629,21 +2698,125 @@ class AdventureEditor:
 
         self.refresh_messages_display()
     
+    RESP_GUTTER_W = 15          # characters; fits "graphics only"
+
     def create_responses_tab(self):
-        """Responses (actions/conditions) editor UI"""
-        ttk.Label(self.responses_tab, text="Responses Editor", style="Header.TLabel").pack(padx=5, pady=5)
-        ttk.Label(self.responses_tab, 
-                 text="Format: COMMAND:CONDITION:MESSAGE:ACTION (one per line)",
-                 foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 10))
-        
-        self.responses_text = tk.Text(self.responses_tab, height=20, width=80,
-                                     bg=self.colors["responses_bg"], fg=self.colors["responses_fg"],
-                                     font=self.fonts["base"], insertbackground=self.colors["teal"],
-                                     relief=tk.FLAT, bd=0, highlightthickness=0,)
-        self.responses_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        """Responses editor, with a per-row note of what the text engine does.
+
+        The two targets diverge most here: a verb the BASIC runtime has never
+        heard of, or an action it cannot perform, silently becomes nothing.
+        The gutter says which rows survive that, while you are writing them.
+        """
+        ttk.Label(self.responses_tab, text="Responses Editor",
+                  style="Header.TLabel").pack(padx=5, pady=5)
+        ttk.Label(self.responses_tab,
+                  text="Format: COMMAND:CONDITION:MESSAGE:ACTION (one per line)",
+                  foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 2))
+        ttk.Label(self.responses_tab,
+                  text="The left column says whether each row runs in BOTH targets "
+                       "or only in the graphical build.",
+                  foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 8))
+
+        editor = ttk.Frame(self.responses_tab)
+        editor.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 6))
+
+        self.responses_gutter = tk.Text(
+            editor, width=self.RESP_GUTTER_W, height=18,
+            bg=self.colors["bg_mid"], fg=self.colors["fg_hint"],
+            font=self.fonts["base"], relief=tk.FLAT, bd=0,
+            highlightthickness=0, padx=6, wrap=tk.NONE, takefocus=0,
+            cursor="arrow", state=tk.DISABLED,
+        )
+        self.responses_gutter.pack(side=tk.LEFT, fill=tk.Y)
+
+        scroll = ttk.Scrollbar(editor, command=self._responses_yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.responses_scroll = scroll
+
+        self.responses_text = tk.Text(
+            editor, height=18, width=80,
+            bg=self.colors["responses_bg"], fg=self.colors["responses_fg"],
+            font=self.fonts["base"], insertbackground=self.colors["teal"],
+            relief=tk.FLAT, bd=0, highlightthickness=0,
+            yscrollcommand=self._responses_scrolled,
+        )
+        self.responses_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.responses_text.bind("<KeyRelease>", self.on_responses_changed)
-        
+
+        detail = tk.LabelFrame(
+            self.responses_tab,
+            text="What the text engine does differently",
+            bg=self.colors["bg_mid"], fg=self.colors["fg_hint"],
+            font=self.fonts["sm"], bd=0, relief="flat",
+            highlightthickness=0, padx=10, pady=6,
+        )
+        detail.pack(fill=tk.X, padx=20, pady=(0, 10))
+
+        self.responses_detail = tk.Text(
+            detail, height=6, bg=self.colors["bg_dark"],
+            fg=self.colors["fg_primary"], font=self.fonts["sm"],
+            relief=tk.FLAT, bd=0, highlightthickness=0, wrap=tk.WORD,
+            state=tk.DISABLED,
+        )
+        self.responses_detail.pack(fill=tk.X)
+
         self.refresh_responses_display()
+
+    # -- scroll the gutter in step with the editor -----------------------
+    def _responses_yview(self, *args):
+        self.responses_text.yview(*args)
+        self.responses_gutter.yview(*args)
+
+    def _responses_scrolled(self, first, last):
+        self.responses_scroll.set(first, last)
+        self.responses_gutter.yview_moveto(first)
+
+    def refresh_responses_compat(self):
+        """Recompute the gutter and the detail panel from the editor text."""
+        if not hasattr(self, "responses_gutter"):
+            return
+        raw = self.responses_text.get(1.0, tk.END).rstrip("\n")
+        marks, details = [], []
+        for n, line in enumerate(raw.split("\n"), 1):
+            if not line.strip():
+                marks.append("")
+                continue
+            if ":" not in line:
+                marks.append("not a response")
+                details.append(f"Line {n}: not in COMMAND:CONDITION:MESSAGE:ACTION form.")
+                continue
+            parts = line.split(":")
+            resp = {
+                "command":   parts[0].strip(),
+                "condition": parts[1].strip() if len(parts) > 1 else "",
+                "message":   parts[2].strip() if len(parts) > 2 else "",
+                "action":    parts[3].strip() if len(parts) > 3 else "",
+            }
+            problems = basic_incompatibilities(resp)
+            marks.append("both" if not problems else "graphics only")
+            for p in problems:
+                details.append(f"Line {n}: {p}")
+
+        self.responses_gutter.config(state=tk.NORMAL)
+        self.responses_gutter.delete(1.0, tk.END)
+        self.responses_gutter.insert(1.0, "\n".join(marks))
+        self.responses_gutter.config(state=tk.DISABLED)
+        self.responses_gutter.yview_moveto(self.responses_text.yview()[0])
+
+        total = sum(1 for m in marks if m)
+        both = sum(1 for m in marks if m == "both")
+        if details:
+            head = (f"{both} of {total} responses run in both targets. "
+                    f"The rest run only in the graphical build:\n\n")
+            body = head + "\n".join(details)
+        elif total:
+            body = f"All {total} responses run in both targets."
+        else:
+            body = "No responses yet."
+        self.responses_detail.config(state=tk.NORMAL)
+        self.responses_detail.delete(1.0, tk.END)
+        self.responses_detail.insert(1.0, body)
+        self.responses_detail.config(state=tk.DISABLED)
     
     def create_player_tab(self):
         """Game player UI"""
@@ -3077,12 +3250,14 @@ class AdventureEditor:
                         "message": parts[2].strip() if len(parts) > 2 else "",
                         "action": parts[3].strip() if len(parts) > 3 else ""
                     })
+        self.refresh_responses_compat()
     
     def refresh_responses_display(self):
         self.responses_text.delete(1.0, tk.END)
         for resp in self.game["responses"]:
             line = f"{resp['command']}:{resp['condition']}:{resp['message']}:{resp['action']}\n"
             self.responses_text.insert(tk.END, line)
+        self.refresh_responses_compat()
     
     # File operations
     def new_game(self):

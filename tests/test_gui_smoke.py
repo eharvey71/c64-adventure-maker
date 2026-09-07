@@ -105,6 +105,45 @@ class TestEditorSmoke(unittest.TestCase):
             reloaded = json.loads(p.read_text())
         self.assertEqual(reloaded["scenes"]["ART"]["crop_offset"], 104)
 
+    def test_responses_gutter_has_one_mark_per_row(self):
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0",
+            "USE LAMP::RUBBED.:\n"
+            "EXAMINE LAMP::A LAMP.:\n"
+            "USE COIN::SPENT.:SCORE 10\n")
+        self.app.on_responses_changed()
+        self.root.update()
+        gutter = self.app.responses_gutter.get("1.0", tk.END).rstrip("\n").split("\n")
+        self.assertEqual(gutter[:3], ["both", "graphics only", "both"])
+
+    def test_responses_gutter_updates_as_you_type(self):
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0", "USE LAMP::RUBBED.:\n")
+        self.app.on_responses_changed(); self.root.update()
+        self.assertEqual(
+            self.app.responses_gutter.get("1.0", "1.end"), "both")
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0", "TALK LAMP::HELLO.:\n")
+        self.app.on_responses_changed(); self.root.update()
+        self.assertEqual(
+            self.app.responses_gutter.get("1.0", "1.end"), "graphics only")
+
+    def test_responses_detail_lists_reasons_by_line(self):
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0", "TALK WIZARD:AT 4::MSG HI\n")
+        self.app.on_responses_changed(); self.root.update()
+        body = self.app.responses_detail.get("1.0", tk.END)
+        self.assertIn("Line 1:", body)
+        self.assertIn("USE", body)
+
+    def test_responses_gutter_is_read_only(self):
+        self.assertEqual(str(self.app.responses_gutter.cget("state")), "disabled")
+
+    def test_empty_responses_do_not_crash_the_gutter(self):
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.on_responses_changed()
+        self.root.update()
+
     def test_crop_control_with_no_scene_selected_does_not_crash(self):
         self.app._current_scene_id = None
         self.app.on_scene_crop_changed(48)   # must be a no-op, not an error
