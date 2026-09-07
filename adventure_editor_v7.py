@@ -3542,11 +3542,23 @@ class AdventureEditor:
         stops parsing more of that type past the limit, with no error
         message at all. Warnings are advisory (disk space estimate).
         """
+        # Verified against legacy/advplay-c64-current.bas:
+        #   30 dim i$(10)     inventory
+        #   40 dim r$(20,4)   rooms
+        #   50 dim m$(10,1)   messages   <- 10, not 40
+        #   60 dim f$(10)     flags
+        #      dim o$(30,4)   objects
+        #      dim v$(20,2)   vocabulary
+        #      dim rs$(20,3)  responses
+        # The loader drops overflow silently: line 4010 reads
+        #   nm=nm+1:if nm>10 then return
+        # and line 15270 reads
+        #   if nf<10 then nf=nf+1
         limits = {
             "rooms":      (len(self.game.get("rooms", {})), 20),
             "objects":    (len(self.game.get("objects", {})), 30),
             "vocabulary": (len(self.game.get("vocabulary", {})), 20),
-            "messages":   (len(self.game.get("messages", {})), 40),
+            "messages":   (len(self.game.get("messages", {})), 10),
             "responses":  (len(self.game.get("responses", [])), 20),
         }
         errors = []
