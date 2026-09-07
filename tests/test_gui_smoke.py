@@ -114,7 +114,7 @@ class TestEditorSmoke(unittest.TestCase):
         self.app.on_responses_changed()
         self.root.update()
         gutter = self.app.responses_gutter.get("1.0", tk.END).rstrip("\n").split("\n")
-        self.assertEqual(gutter[:3], ["both", "graphics only", "both"])
+        self.assertEqual(gutter[:3], ["both", "both", "both"])
 
     def test_responses_gutter_updates_as_you_type(self):
         self.app.responses_text.delete("1.0", tk.END)
@@ -123,18 +123,19 @@ class TestEditorSmoke(unittest.TestCase):
         self.assertEqual(
             self.app.responses_gutter.get("1.0", "1.end"), "both")
         self.app.responses_text.delete("1.0", tk.END)
-        self.app.responses_text.insert("1.0", "TALK LAMP::HELLO.:\n")
+        self.app.responses_text.insert("1.0", "USE LAMP::HELLO.:TELEPORT 4\n")
         self.app.on_responses_changed(); self.root.update()
         self.assertEqual(
             self.app.responses_gutter.get("1.0", "1.end"), "graphics only")
 
     def test_responses_detail_lists_reasons_by_line(self):
         self.app.responses_text.delete("1.0", tk.END)
-        self.app.responses_text.insert("1.0", "TALK WIZARD:AT 4::MSG HI\n")
+        self.app.responses_text.insert("1.0", "USE WAND:WEATHER SUNNY::TELEPORT 4\n")
         self.app.on_responses_changed(); self.root.update()
         body = self.app.responses_detail.get("1.0", tk.END)
         self.assertIn("Line 1:", body)
-        self.assertIn("USE", body)
+        self.assertIn("WEATHER SUNNY", body)
+        self.assertIn("TELEPORT", body)
 
     def test_responses_gutter_is_read_only(self):
         self.assertEqual(str(self.app.responses_gutter.cget("state")), "disabled")

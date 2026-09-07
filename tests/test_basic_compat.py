@@ -44,51 +44,54 @@ class TestCompatibleResponses(unittest.TestCase):
 
 
 class TestVerbRules(unittest.TestCase):
-    def test_non_use_verbs_are_flagged(self):
-        for verb in ("EXAMINE", "TALK", "HIT", "GIVE", "TAKE", "DROP"):
-            problems = ed.basic_incompatibilities(resp(command=f"{verb} THING"))
-            self.assertTrue(any("only consults responses for USE" in p
-                                for p in problems), f"{verb} not flagged")
-
-    def test_article_agrees_with_the_verb(self):
-        self.assertIn("an EXAMINE response",
-                      ed.basic_incompatibilities(resp(command="EXAMINE X"))[0])
-        self.assertIn("a TALK response",
-                      ed.basic_incompatibilities(resp(command="TALK X"))[0])
+    def test_any_verb_now_reaches_the_response_table(self):
+        for verb in ("EXAMINE", "TALK", "HIT", "GIVE", "USE", "RUB", "XYZZY"):
+            self.assertEqual(
+                ed.basic_incompatibilities(resp(command=f"{verb} THING")), [],
+                f"{verb} should reach the response table")
 
     def test_empty_command_is_flagged(self):
         self.assertTrue(ed.basic_incompatibilities(resp(command="   ")))
 
 
 class TestConditionRules(unittest.TestCase):
-    def test_comma_list_is_flagged(self):
-        problems = ed.basic_incompatibilities(resp(condition="HAS SWORD,AT 7"))
-        self.assertTrue(any("one condition only" in p for p in problems))
+    def test_comma_lists_are_accepted(self):
+        self.assertEqual(
+            ed.basic_incompatibilities(resp(condition="HAS SWORD,AT 7")), [])
 
-    def test_unknown_condition_is_flagged_as_silently_true(self):
-        problems = ed.basic_incompatibilities(resp(condition="AT 4"))
-        self.assertTrue(any("treated as true" in p for p in problems))
+    def test_at_and_not_are_accepted(self):
+        for cond in ("AT 4", "NOT FLAG.DEAD", "NOT FLAG.DEAD,AT 7",
+                     "HAS KEY,NOT FLAG.OPEN,AT 2"):
+            self.assertEqual(ed.basic_incompatibilities(resp(condition=cond)),
+                             [], cond)
+
+    def test_a_genuinely_unknown_condition_is_still_flagged(self):
+        problems = ed.basic_incompatibilities(resp(condition="WEATHER SUNNY"))
+        self.assertTrue(any("does not understand" in p for p in problems))
+
+    def test_each_bad_term_reports_once(self):
+        problems = ed.basic_incompatibilities(
+            resp(condition="HAS KEY,WEATHER SUNNY,MOOD GLAD"))
+        self.assertEqual(len(problems), 2)
 
     def test_empty_condition_is_fine(self):
         self.assertEqual(ed.basic_incompatibilities(resp(condition="")), [])
 
-    def test_a_comma_list_reports_once_not_twice(self):
-        # It is one defect, not "comma" plus "unknown prefix".
-        problems = ed.basic_incompatibilities(resp(condition="HAS SWORD,AT 7"))
-        self.assertEqual(len(problems), 1)
-
 
 class TestActionRules(unittest.TestCase):
-    def test_comma_list_names_the_survivor(self):
-        problems = ed.basic_incompatibilities(
-            resp(action="SET FLAG.DEAD,REMOVE BEAST,SCORE 50"))
-        self.assertEqual(len(problems), 1)
-        self.assertIn("SET FLAG.DEAD", problems[0])
+    def test_comma_lists_run_in_full(self):
+        self.assertEqual(ed.basic_incompatibilities(
+            resp(action="SET FLAG.DEAD,REMOVE BEAST,UNLOCK SOUTH 7 TO 8,SCORE 50")),
+            [])
 
-    def test_unimplemented_actions_are_flagged(self):
+    def test_remove_and_msg_are_implemented(self):
         for action in ("REMOVE BEAST", "MSG GREETING"):
-            problems = ed.basic_incompatibilities(resp(action=action))
-            self.assertTrue(any("has no" in p for p in problems), action)
+            self.assertEqual(ed.basic_incompatibilities(resp(action=action)),
+                             [], action)
+
+    def test_a_genuinely_unknown_action_is_still_flagged(self):
+        problems = ed.basic_incompatibilities(resp(action="TELEPORT 4"))
+        self.assertTrue(any("has no" in p for p in problems))
 
     def test_empty_action_is_fine(self):
         self.assertEqual(ed.basic_incompatibilities(resp(action="")), [])
@@ -100,9 +103,10 @@ class TestAgainstTheShippedSample(unittest.TestCase):
         with open(REPO / "example_castle.json") as f:
             cls.responses = json.load(f)["responses"]
 
-    def test_only_the_one_use_response_survives(self):
-        ok = [r for r in self.responses if not ed.basic_incompatibilities(r)]
-        self.assertEqual([r["command"] for r in ok], ["USE KEY GATE"])
+    def test_every_response_now_runs_in_both_targets(self):
+        bad = {r["command"]: ed.basic_incompatibilities(r)
+               for r in self.responses if ed.basic_incompatibilities(r)}
+        self.assertEqual(bad, {})
 
     def test_every_response_is_classified_without_error(self):
         for r in self.responses:
@@ -118,21 +122,27 @@ class TestAgainstTheShippedSample(unittest.TestCase):
 class TestRuleTablesMatchTheRuntime(unittest.TestCase):
     """Guard the constants against drift from the BASIC source."""
 
-    def test_only_use_reaches_the_response_table(self):
-        self.assertEqual(ed.BASIC_RESPONSE_VERBS, {"USE"})
-
     def test_condition_prefixes(self):
-        self.assertEqual(set(ed.BASIC_CONDITION_PREFIXES), {"HAS ", "FLAG."})
+        self.assertEqual(set(ed.BASIC_CONDITION_PREFIXES),
+                         {"HAS ", "FLAG.", "AT ", "NOT "})
 
-    def test_action_prefixes_cover_the_five_implemented_actions(self):
+    def test_action_prefixes_cover_every_implemented_action(self):
         self.assertEqual(set(ed.BASIC_ACTION_PREFIXES),
-                         {"UNLOCK ", "MOVE TO ", "SET FLAG.", "SCORE ", "WIN"})
+                         {"UNLOCK ", "MOVE TO ", "SET FLAG.", "SCORE ",
+                          "WIN", "REMOVE ", "MSG "})
 
     def test_the_runtime_still_dispatches_exactly_these_actions(self):
         src = (REPO / "legacy" / "advplay-c64-current.bas").read_text()
-        for token in ("unlock ", "move to ", "set flag.", "win", "score "):
+        for token in ("unlock ", "move to ", "set flag.", "win", "score ",
+                      "remove ", "msg "):
             self.assertIn(f'="{token}"', src,
                           f"runtime no longer dispatches {token!r}")
+
+    def test_the_runtime_evaluates_condition_terms(self):
+        src = (REPO / "legacy" / "advplay-c64-current.bas").read_text()
+        for token in ("has ", "flag.", "at ", "not "):
+            self.assertIn(f'="{token}"', src,
+                          f"runtime no longer evaluates {token!r}")
 
 
 if __name__ == "__main__":

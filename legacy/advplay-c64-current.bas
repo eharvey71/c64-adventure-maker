@@ -229,8 +229,10 @@
 5380 rem
 5385 rem check for use command
 5390 if left$(c$,4)="use " then gosub 13000:goto 5110
-5395 rem
-5400 rem unknown command
+5395 rem unknown verb: give the response table a chance
+5396 c2$=c$:qm=1:gosub 13300:qm=0
+5397 if f=1 then goto 5110
+5400 rem nothing matched
 5410 print "i don't understand that."
 5420 goto 5110
 5430 rem
@@ -396,6 +398,8 @@
 12020 if left$(c$,7)="examine" then if len(c$)>8 then o$=mid$(c$,9)
 12030 if left$(c$,4)="look" then if len(c$)>5 then o$=mid$(c$,6)
 12035 if o$="" then print "examine what?":return
+12036 c2$="examine "+o$:qm=1:gosub 13300:qm=0
+12037 if f=1 then return
 12040 rem
 12050 rem find object (in room or inventory)
 12060 f=0
@@ -446,7 +450,7 @@
 13330   if rs$(i,0)<>"" then gosub 13400
 13335   if f=1 then i=nq:rem exit if found
 13340 next i
-13350 if f=0 then print "nothing happens."
+13350 if f=0 then if qm=0 then print "nothing happens."
 13360 return
 13370 rem
 13400 rem *** check single response ***
@@ -476,17 +480,24 @@
 13650 return
 13660 rem
 14000 rem *** evaluate condition ***
-14010 rem simple conditions only
-14020 co=1:rem condition result (default true)
-14030 rem
-14040 rem check for "has object"
-14050 if left$(co$,4)="has " then goto 14100
-14060 rem
-14070 rem check for flag
-14080 if left$(co$,5)="flag." then goto 14200
-14090 return
+14005 rem a comma list; every term must hold
+14010 co=1
+14015 if co$="" then return
+14020 zc$=co$+","
+14025 zp=1
+14030 for zq=1 to len(zc$)
+14035   if mid$(zc$,zq,1)<>"," then 14055
+14040   zt$=mid$(zc$,zp,zq-zp)
+14045   gosub 14400
+14050   if zv=0 then co=0:zq=len(zc$)
+14055   zp=zq+1
+14060 next zq
+14065 co=1:if zv=0 then co=0
+14070 return
+14080 rem
+14090 rem
 14100 rem *** has object condition ***
-14110 ob$="":for k=5 to len(co$):ob$=ob$+mid$(co$,k,1):next k
+14110 ob$="":for k=5 to len(zt$):ob$=ob$+mid$(zt$,k,1):next k
 14120 co=0:rem default false
 14130 for j=1 to no
 14140   if o$(j,1)="-1" then if left$(o$(j,0),len(ob$))=ob$ then co=1:j=no
@@ -494,37 +505,60 @@
 14160 return
 14170 rem
 14200 rem *** flag condition ***
-14210 fl$="":for k=6 to len(co$):fl$=fl$+mid$(co$,k,1):next k
+14210 fl$="":for k=6 to len(zt$):fl$=fl$+mid$(zt$,k,1):next k
 14220 co=0:rem default false
 14230 for j=1 to nf
 14240   if f$(j)=fl$ then co=1:j=nf
 14250 next j
 14260 return
 14270 rem
-15000 rem *** execute action ***
-15010 rem simple actions only
-15020 rem
-15030 rem check for "unlock"
-15040 if left$(ac$,7)="unlock " then goto 15300
-15050 rem
-15060 rem check for "move to"
-15070 if left$(ac$,8)="move to " then goto 15100
-15080 rem check for "set flag"
-15085 if left$(ac$,9)="set flag." then goto 15200
-15086 rem check for "win"
-15087 if left$(ac$,3)="win" then goto 15900
-15088 rem check for "score"
-15089 if left$(ac$,6)="score " then goto 16000
+14300 rem *** at room condition ***
+14310 t$="":for k=4 to len(zt$):t$=t$+mid$(zt$,k,1):next k
+14320 co=0
+14330 if cr=val(t$) then co=1
+14340 return
+14350 rem
+14400 rem *** evaluate one term into zv ***
+14405 zn=0
+14410 if left$(zt$,4)="not " then zn=1:zt$=mid$(zt$,5)
+14415 co=1
+14420 if left$(zt$,4)="has " then gosub 14100:goto 14450
+14425 if left$(zt$,5)="flag." then gosub 14200:goto 14450
+14430 if left$(zt$,3)="at " then gosub 14300:goto 14450
+14435 rem anything else is not understood; treat as true
+14440 co=1
+14450 zv=co
+14455 if zn=1 then zv=1-zv
+14460 return
+14470 rem
+15000 rem *** execute action(s) ***
+15005 rem a comma list; run each in turn
+15010 if ac$="" then return
+15015 za$=ac$+","
+15020 zb=1
+15025 for zd=1 to len(za$)
+15030   if mid$(za$,zd,1)<>"," then 15040
+15035   ze$=mid$(za$,zb,zd-zb):gosub 15050:zb=zd+1
+15040 next zd
+15045 return
+15050 rem *** dispatch one action held in ze$ ***
+15055 if left$(ze$,7)="unlock " then goto 15300
+15060 if left$(ze$,8)="move to " then goto 15100
+15065 if left$(ze$,9)="set flag." then goto 15200
+15070 if left$(ze$,3)="win" then goto 15900
+15075 if left$(ze$,6)="score " then goto 16000
+15080 if left$(ze$,7)="remove " then goto 16200
+15085 if left$(ze$,4)="msg " then goto 16100
 15090 return
 15100 rem *** move to room ***
-15110 t$="":for k=9 to len(ac$):t$=t$+mid$(ac$,k,1):next k
+15110 t$="":for k=9 to len(ze$):t$=t$+mid$(ze$,k,1):next k
 15115 rn=val(t$):rem room number
 15120 cr=rn
 15130 gosub 6000:rem show new room
 15140 return
 15150 rem
 15200 rem *** set flag ***
-15210 fl$="":for k=10 to len(ac$):fl$=fl$+mid$(ac$,k,1):next k
+15210 fl$="":for k=10 to len(ze$):fl$=fl$+mid$(ze$,k,1):next k
 15220 rem check if flag already exists
 15230 for j=1 to nf
 15240   if f$(j)=fl$ then return:rem already set
@@ -539,28 +573,28 @@
 15330 rem
 15340 rem extract direction
 15350 dr=0:rp=0
-15360 if mid$(ac$,8,5)="north" then dr=1:rp=14
-15370 if mid$(ac$,8,5)="south" then dr=2:rp=14
-15380 if mid$(ac$,8,4)="east" then dr=3:rp=13
-15390 if mid$(ac$,8,4)="west" then dr=4:rp=13
+15360 if mid$(ze$,8,5)="north" then dr=1:rp=14
+15370 if mid$(ze$,8,5)="south" then dr=2:rp=14
+15380 if mid$(ze$,8,4)="east" then dr=3:rp=13
+15390 if mid$(ze$,8,4)="west" then dr=4:rp=13
 15400 rem dr=direction 1-4, rp=pos after dir
 15410 rem
 15420 rem extract room number
 15430 rm$=""
-15440 for k=rp to len(ac$)
-15450   if mid$(ac$,k,1)>="0" and mid$(ac$,k,1)<="9" then rm$=rm$+mid$(ac$,k,1)
-15460   if mid$(ac$,k,1)=" " and rm$<>"" then k=len(ac$)
+15440 for k=rp to len(ze$)
+15450   if mid$(ze$,k,1)>="0" and mid$(ze$,k,1)<="9" then rm$=rm$+mid$(ze$,k,1)
+15460   if mid$(ze$,k,1)=" " and rm$<>"" then k=len(ze$)
 15470 next k
 15480 rm=val(rm$)
 15490 rem
 15500 rem find " to " and extract dest
 15510 tp=0
-15520 for k=rp to len(ac$)-3
-15530   if mid$(ac$,k,4)=" to " then tp=k+4:k=len(ac$)
+15520 for k=rp to len(ze$)-3
+15530   if mid$(ze$,k,4)=" to " then tp=k+4:k=len(ze$)
 15540 next k
 15550 ds$=""
-15560 for k=tp to len(ac$)
-15570   if mid$(ac$,k,1)>="0" and mid$(ac$,k,1)<="9" then ds$=ds$+mid$(ac$,k,1)
+15560 for k=tp to len(ze$)
+15570   if mid$(ze$,k,1)>="0" and mid$(ze$,k,1)<="9" then ds$=ds$+mid$(ze$,k,1)
 15580 next k
 15590 ds=val(ds$)
 15600 rem
@@ -605,8 +639,20 @@
 16000 rem *** add to score ***
 16010 rem format: score nnn
 16020 t$=""
-16030 for k=7 to len(ac$)
-16040   if mid$(ac$,k,1)>="0" and mid$(ac$,k,1)<="9" then t$=t$+mid$(ac$,k,1)
+16030 for k=7 to len(ze$)
+16040   if mid$(ze$,k,1)>="0" and mid$(ze$,k,1)<="9" then t$=t$+mid$(ze$,k,1)
 16050 next k
 16060 sc=sc+val(t$)
 16070 return
+16100 rem *** print a message from the table by key ***
+16110 zk$="":for k=5 to len(ze$):zk$=zk$+mid$(ze$,k,1):next k
+16120 for j=1 to nm
+16130   if m$(j,0)=zk$ then print m$(j,1):j=nm
+16140 next j
+16150 return
+16200 rem *** remove object from play ***
+16210 ob$="":for k=8 to len(ze$):ob$=ob$+mid$(ze$,k,1):next k
+16220 for j=1 to no
+16230   if o$(j,0)<>"" then if left$(o$(j,0),len(ob$))=ob$ then o$(j,1)="0":j=no
+16240 next j
+16250 return

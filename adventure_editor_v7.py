@@ -346,68 +346,48 @@ def placeholder_room_png(room_num, out_path):
 # ---------------------------------------------------------------------------
 # TEXT-ENGINE COMPATIBILITY
 # ---------------------------------------------------------------------------
-# What legacy/advplay-c64-current.bas can actually carry out, established by
-# reading that runtime and confirming each item on hardware:
+# legacy/advplay-c64-current.bas now understands everything the editor emits:
+# any verb reaches the response table, conditions and actions may be comma
+# lists, NOT and AT conditions work, and REMOVE and MSG are implemented.
 #
-#   * Only USE reaches the response table. Line 5390 is the single route into
-#     the scanner, so EXAMINE, TAKE and every other verb never consult it.
-#   * Conditions: HAS <object> and FLAG.<name>, one per response. The handler
-#     at 14000 tests the whole string, so a comma list breaks even the part it
-#     would otherwise understand, and an unrecognised condition falls through
-#     with the result still set to true.
-#   * Actions: UNLOCK, MOVE TO, SET FLAG, WIN and SCORE, one per response. The
-#     dispatcher at 15000 tests the whole string, so only the first of a comma
-#     list runs. REMOVE has no implementation at all.
-#
-# The graphical (StoryTllr) target has none of these limits.
+# What remains genuinely graphical-only is room artwork, which the text engine
+# has no way to display. Everything else runs in both targets.
 
-BASIC_RESPONSE_VERBS = {"USE"}
-BASIC_CONDITION_PREFIXES = ("HAS ", "FLAG.")
-BASIC_ACTION_PREFIXES = ("UNLOCK ", "MOVE TO ", "SET FLAG.", "SCORE ", "WIN")
+BASIC_CONDITION_PREFIXES = ("HAS ", "FLAG.", "AT ", "NOT ")
+BASIC_ACTION_PREFIXES = ("UNLOCK ", "MOVE TO ", "SET FLAG.", "SCORE ",
+                         "WIN", "REMOVE ", "MSG ")
 
 
 def basic_incompatibilities(resp):
     """Reasons a response will not behave in the text engine as written.
 
     Returns a list of plain sentences, empty when the response works in both
-    targets. Order is the order an author would hit them: command, then
-    condition, then action.
+    targets. Each term of a comma list is checked on its own, since the
+    runtime now evaluates them individually.
     """
     reasons = []
 
-    cmd = (resp.get("command") or "").strip().upper()
-    verb = cmd.split()[0] if cmd.split() else ""
-    if not verb:
+    cmd = (resp.get("command") or "").strip()
+    if not cmd:
         reasons.append("No command, so nothing can match it.")
-    elif verb not in BASIC_RESPONSE_VERBS:
-        article = "an" if verb[0] in "AEIOU" else "a"
-        reasons.append(
-            f"The text engine only consults responses for USE, so "
-            f"{article} {verb} response never runs there.")
 
-    cond = (resp.get("condition") or "").strip().upper()
-    if cond:
-        if "," in cond:
+    for term in (resp.get("condition") or "").strip().upper().split(","):
+        term = term.strip()
+        if not term:
+            continue
+        body = term[4:].strip() if term.startswith("NOT ") else term
+        if not body.startswith(("HAS ", "FLAG.", "AT ")):
             reasons.append(
-                "The text engine reads one condition only; everything from "
-                "the first comma onward is ignored, which also breaks the "
-                "part before it.")
-        elif not cond.startswith(BASIC_CONDITION_PREFIXES):
-            reasons.append(
-                f"The text engine understands only HAS and FLAG conditions. "
-                f"'{cond}' is skipped and treated as true, so this response "
-                f"fires when it should not.")
+                f"The text engine does not understand the condition "
+                f"'{term}', so it is skipped and treated as true.")
 
-    action = (resp.get("action") or "").strip().upper()
-    if action:
-        if "," in action:
-            first = action.split(",")[0].strip()
+    for term in (resp.get("action") or "").strip().upper().split(","):
+        term = term.strip()
+        if not term:
+            continue
+        if not term.startswith(BASIC_ACTION_PREFIXES):
             reasons.append(
-                f"The text engine runs one action per response, so only "
-                f"'{first}' happens and the rest are dropped.")
-        elif not action.startswith(BASIC_ACTION_PREFIXES):
-            reasons.append(
-                f"The text engine has no '{action.split()[0]}' action.")
+                f"The text engine has no '{term.split()[0]}' action.")
 
     return reasons
 
