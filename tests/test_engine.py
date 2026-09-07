@@ -192,5 +192,80 @@ class TestMinimalGame(unittest.TestCase):
         self.assertNotIn("STATUE", [o for o, _ in e.inventory_objects()])
 
 
+class TestParityWithTheTextRuntime(unittest.TestCase):
+    """The Player must show what a .adv build will actually do.
+
+    Each of these mirrors a rule in legacy/advplay-c64-current.bas that was
+    confirmed in VICE, so the two cannot drift apart unnoticed.
+    """
+
+    def setUp(self):
+        self.e = sample_engine()
+
+    # -- NOT on conditions (runtime line 14410) --------------------------
+    def test_not_inverts_a_flag_condition(self):
+        self.e.current_room = 7
+        self.assertTrue(self.e.check_condition("NOT FLAG.BEAST_DEAD"))
+        self.e.flags.append("BEAST_DEAD")
+        self.assertFalse(self.e.check_condition("NOT FLAG.BEAST_DEAD"))
+
+    def test_not_combines_with_other_terms(self):
+        self.e.current_room = 7
+        self.assertTrue(self.e.check_condition("NOT FLAG.BEAST_DEAD,AT 7"))
+        self.assertFalse(self.e.check_condition("NOT FLAG.BEAST_DEAD,AT 4"))
+
+    def test_not_on_a_has_condition(self):
+        self.assertTrue(self.e.check_condition("NOT HAS SWORD"))
+        self.e.game["objects"]["SWORD"]["start_room"] = -1
+        self.assertFalse(self.e.check_condition("NOT HAS SWORD"))
+
+    # -- any verb reaches the response table (runtime line 5396) ---------
+    def test_hit_reaches_the_response_table(self):
+        e = sample_engine(); e.current_room = 7
+        e.game["objects"]["SWORD"]["start_room"] = -1
+        msg, _ = e.execute_command("HIT BEAST")
+        self.assertIn("SLASH", msg.upper())
+
+    def test_hit_still_respects_its_condition(self):
+        e = sample_engine(); e.current_room = 7      # no sword carried
+        msg, _ = e.execute_command("HIT BEAST")
+        self.assertNotIn("SLASH", msg.upper())
+
+    def test_talk_reaches_the_response_table(self):
+        e = sample_engine(); e.current_room = 4
+        msg, extras = e.execute_command("TALK WIZARD")
+        self.assertTrue(any("WIZARD LOOKS UP" in x.upper() for x in extras))
+
+    def test_an_invented_verb_reaches_the_response_table(self):
+        e = sample_engine()
+        e.game["responses"].append(
+            {"command": "RUB LAMP", "condition": "", "message": "IT GLOWS.",
+             "action": ""})
+        msg, _ = e.execute_command("RUB LAMP")
+        self.assertEqual(msg, "IT GLOWS.")
+
+    def test_a_genuinely_unknown_command_is_still_refused(self):
+        msg, _ = self.e.execute_command("XYZZY PLUGH")
+        self.assertIn("UNDERSTAND", msg.upper())
+
+    # -- filler words (runtime routine at 7200) --------------------------
+    def test_filler_words_are_dropped(self):
+        for phrasing in ("GIVE CHALICE WIZARD",
+                         "GIVE CHALICE TO WIZARD",
+                         "GIVE THE CHALICE TO THE WIZARD"):
+            e = sample_engine(); e.current_room = 4
+            e.game["objects"]["TREASURE"]["start_room"] = -1
+            msg, _ = e.execute_command(phrasing)
+            self.assertIn("PRESENT", msg.upper(), phrasing)
+
+    def test_the_verb_itself_is_never_treated_as_filler(self):
+        # "AT" is a filler word, but a command starting with it keeps it.
+        self.assertEqual(self.e.expand_input("AT LAMP").split()[0], "AT")
+
+    def test_filler_stripping_survives_synonym_expansion(self):
+        e = sample_engine()
+        self.assertEqual(e.expand_input("X AT THE SWORD"), "EXAMINE SWORD")
+
+
 if __name__ == "__main__":
     unittest.main()

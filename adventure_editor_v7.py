@@ -353,6 +353,9 @@ def placeholder_room_png(room_num, out_path):
 # What remains genuinely graphical-only is room artwork, which the text engine
 # has no way to display. Everything else runs in both targets.
 
+# Dropped from a command before matching, by both engines.
+FILLER_WORDS = {"TO", "ON", "WITH", "AT", "THE", "INTO"}
+
 BASIC_CONDITION_PREFIXES = ("HAS ", "FLAG.", "AT ", "NOT ")
 BASIC_ACTION_PREFIXES = ("UNLOCK ", "MOVE TO ", "SET FLAG.", "SCORE ",
                          "WIN", "REMOVE ", "MSG ")
@@ -983,6 +986,20 @@ class GameEngine:
             if not cond:
                 continue
 
+            # NOT inverts a term, matching the runtime's line 14410. Without
+            # this the term fell through as unrecognised and was treated as
+            # true, so NOT FLAG.X held whether or not the flag was set.
+            negate = False
+            if cond.startswith("NOT "):
+                negate = True
+                cond = cond[4:].strip()
+            if negate:
+                inner = self.check_condition(cond)
+                self.dbg(f"  COND NOT {cond} → {not inner}")
+                if inner:
+                    return False
+                continue
+
             if cond.startswith("HAS "):
                 # advplay-c64-v3.bas line ~14100-14156: ID prefix first,
                 # then name prefix (see find_object docstring).
@@ -1198,7 +1215,13 @@ class GameEngine:
                 words[0] = base.upper()
                 break
 
-        return " ".join(words)
+        # Filler words are dropped so phrasing can be natural, matching the
+        # runtime's routine at 7200: "GIVE CHALICE TO WIZARD" and
+        # "GIVE CHALICE WIZARD" reach the same response.
+        kept = [words[0]] + [w for w in words[1:] if w not in FILLER_WORDS]
+        if kept != words:
+            self.dbg(f"FILLER: {' '.join(words)} → {' '.join(kept)}")
+        return " ".join(kept)
 
     def execute_command(self, raw_input):
         """
@@ -1315,11 +1338,13 @@ class GameEngine:
                 return msg, extras
             return self.get_msg("DONT_UNDERSTAND", "I don't understand that."), []
 
-        # Real BASIC only ever checks the responses table from USE (line
-        # 5390), EXAMINE (added above), and GIVE (added above) — any other
-        # unrecognized verb always falls straight to "I don't understand
-        # that." (line 5410), regardless of what's in the responses table.
-        # No generic fallback here, to match that.
+        # Any other verb gets one pass at the response table, matching the
+        # runtime's line 5396. This is what lets TALK, HIT and any verb the
+        # author invents work here as they now do on the C64.
+        msg, extras = self.check_responses(c)
+        if msg is not None:
+            return msg, extras
+
         return self.get_msg("DONT_UNDERSTAND", "I don't understand that."), []
 
     # ------------------------------------------------------------------
