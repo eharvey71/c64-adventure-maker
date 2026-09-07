@@ -41,8 +41,11 @@
 1050 rem *** read file line by line ***
 1060 if st<>0 then 1900:rem end of file
 1070 l$="":rem line buffer
-1080 get#1,a$:if st<>0 then 1900
-1090 if a$<>chr$(13) then l$=l$+a$:goto 1080
+1080 get#1,a$
+1082 if a$=chr$(13) then 1100
+1084 if a$<>"" then l$=l$+a$
+1086 if st=0 then 1080
+1088 if l$="" then 1900
 1100 l=l+1
 1110 rem trim spaces
 1120 if left$(l$,1)=" " and len(l$)>0 then l$=mid$(l$,2):goto 1120
@@ -93,6 +96,7 @@
 2085 return
 2130 rem
 2500 rem *** parse rooms ***
+2509 if l$="" then return
 2510 nr=nr+1:if nr>20 then return
 2520 rem format: id:name:desc:exits:flags
 2530 p1=1:p2=1:fi=0:rem positions,field
@@ -112,6 +116,7 @@
 2670 return
 2680 rem
 3000 rem *** parse objects ***
+3009 if l$="" then return
 3010 no=no+1:if no>30 then return
 3020 rem format: id:room:name:desc:flags
 3030 p1=1:p2=1:fi=0
@@ -130,6 +135,7 @@
 3170 return
 3180 rem
 3500 rem *** parse vocabulary ***
+3509 if l$="" then return
 3510 nv=nv+1:if nv>20 then return
 3520 rem format: word=synonyms
 3530 p=1
@@ -142,6 +148,7 @@
 3600 return
 3610 rem
 4000 rem *** parse messages ***
+4009 if l$="" then return
 4010 nm=nm+1:if nm>10 then return
 4020 rem format: key=message
 4030 p=1
@@ -154,6 +161,7 @@
 4100 return
 4110 rem
 4500 rem *** parse responses ***
+4509 if l$="" then return
 4510 nrs=nrs+1:if nrs>20 then return
 4520 rem format: cmd:condition:msg:action
 4530 p1=1:p2=1:fi=0
