@@ -474,11 +474,9 @@
 15050 rem
 15060 rem check for "move to"
 15070 if left$(ac$,8)="move to " then goto 15100
-15080 rem
-15090 rem check for "set flag"
-15100 if left$(ac$,9)="set flag." then goto 15200
-15110 rem
-15120 return
+15080 rem check for "set flag"
+15085 if left$(ac$,9)="set flag." then goto 15200
+15090 return
 15100 rem *** move to room ***
 15110 t$="":for k=9 to len(ac$):t$=t$+mid$(ac$,k,1):next k
 15115 rn=val(t$):rem room number
