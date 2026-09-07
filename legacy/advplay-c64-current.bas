@@ -16,7 +16,7 @@
 90 gt$="":ga$="":gv$="":rem game title,author,version
 100 cr=0:ic=0:sc=0:ms=100:sr=1:rem current room,inv count,score,max,start
 110 nr=0:no=0:nv=0:nm=0:nf=0:rem num rooms,objs,vocab,msgs,flags
-115 nrs=0:rem num responses
+115 nq=0:rem num responses
 120 rem
 130 rem *** parsing variables ***
 140 c$="":o$="":f=0:n=0:rem command,object,found,new room
@@ -71,7 +71,7 @@
 1920 cr=sr:rem set current room to start
 1930 print:print "loaded ";l;" lines"
 1940 print "rooms:";nr;" objects:";no
-1945 print "responses:";nrs
+1945 print "responses:";nq
 1950 print "vocab:";nv;" messages:";nm
 1960 print:return
 1970 rem
@@ -162,7 +162,7 @@
 4110 rem
 4500 rem *** parse responses ***
 4509 if l$="" then return
-4510 nrs=nrs+1:if nrs>20 then return
+4510 nq=nq+1:if nq>20 then return
 4520 rem format: cmd:condition:msg:action
 4530 p1=1:p2=1:fi=0
 4540 for i=1 to len(l$)
@@ -172,10 +172,10 @@
 4580 return
 4600 rem extract response field
 4610 t$=mid$(l$,p1,p2-p1)
-4620 if fi=0 then rs$(nrs,0)=t$:rem command
-4630 if fi=1 then rs$(nrs,1)=t$:rem condition
-4640 if fi=2 then rs$(nrs,2)=t$:rem message
-4650 if fi=3 then rs$(nrs,3)=t$:rem action
+4620 if fi=0 then rs$(nq,0)=t$:rem command
+4630 if fi=1 then rs$(nq,1)=t$:rem condition
+4640 if fi=2 then rs$(nq,2)=t$:rem message
+4650 if fi=3 then rs$(nq,3)=t$:rem action
 4660 return
 4670 rem
 5000 rem *** start game ***
@@ -415,9 +415,9 @@
 13260 rem
 13300 rem *** check responses ***
 13310 f=0:rem found flag
-13320 for i=1 to nrs
+13320 for i=1 to nq
 13330   if rs$(i,0)<>"" then gosub 13400
-13335   if f=1 then i=nrs:rem exit if found
+13335   if f=1 then i=nq:rem exit if found
 13340 next i
 13350 if f=0 then print "nothing happens."
 13360 return
