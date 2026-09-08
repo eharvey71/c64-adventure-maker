@@ -169,6 +169,37 @@ class TestEditorSmoke(unittest.TestCase):
     def test_the_system_message_section_is_gone(self):
         self.assertFalse(hasattr(self.app, "_sys_msg_vars"))
 
+    def test_reasons_panel_scrolls_when_it_overflows(self):
+        rows = "\n".join(f"USE T{i}:WEATHER SUNNY::TELEPORT {i}"
+                         for i in range(1, 13))
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0", rows + "\n")
+        self.app.on_responses_changed()
+        self.root.update()
+        body = self.app.responses_detail.get("1.0", tk.END)
+        reasons = [l for l in body.split("\n") if l.startswith("Line ")]
+        # two reasons per row, well past the panel's six visible lines
+        self.assertEqual(len(reasons), 24)
+        self.assertGreater(len(reasons), int(self.app.responses_detail.cget("height")))
+        first, last = self.app.responses_detail_scroll.get()
+        self.assertLess(last - first, 1.0, "panel reports no scrollable range")
+
+    def test_reasons_panel_scrollbar_is_wired_both_ways(self):
+        self.assertEqual(
+            str(self.app.responses_detail.cget("yscrollcommand")).strip() != "", True)
+        self.assertEqual(
+            str(self.app.responses_detail_scroll.cget("command")).strip() != "", True)
+
+    def test_reasons_panel_returns_to_the_top_after_an_edit(self):
+        rows = "\n".join(f"USE T{i}:WEATHER SUNNY::TELEPORT {i}"
+                         for i in range(1, 13))
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0", rows + "\n")
+        self.app.on_responses_changed(); self.root.update()
+        self.app.responses_detail.yview_moveto(1.0); self.root.update()
+        self.app.on_responses_changed(); self.root.update()
+        self.assertEqual(self.app.responses_detail_scroll.get()[0], 0.0)
+
     def test_crop_control_with_no_scene_selected_does_not_crash(self):
         self.app._current_scene_id = None
         self.app.on_scene_crop_changed(48)   # must be a no-op, not an error

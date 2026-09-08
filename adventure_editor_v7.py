@@ -2754,13 +2754,18 @@ class AdventureEditor:
         )
         detail.pack(fill=tk.X, padx=20, pady=(0, 10))
 
+        detail_scroll = ttk.Scrollbar(detail)
+        detail_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
         self.responses_detail = tk.Text(
             detail, height=6, bg=self.colors["bg_dark"],
             fg=self.colors["fg_primary"], font=self.fonts["sm"],
             relief=tk.FLAT, bd=0, highlightthickness=0, wrap=tk.WORD,
-            state=tk.DISABLED,
+            state=tk.DISABLED, yscrollcommand=detail_scroll.set,
         )
-        self.responses_detail.pack(fill=tk.X)
+        self.responses_detail.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        detail_scroll.config(command=self.responses_detail.yview)
+        self.responses_detail_scroll = detail_scroll
 
         self.refresh_responses_display()
 
@@ -2819,6 +2824,7 @@ class AdventureEditor:
         self.responses_detail.delete(1.0, tk.END)
         self.responses_detail.insert(1.0, body)
         self.responses_detail.config(state=tk.DISABLED)
+        self.responses_detail.yview_moveto(0)
     
     def create_player_tab(self):
         """Game player UI"""
