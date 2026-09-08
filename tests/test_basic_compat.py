@@ -147,3 +147,61 @@ class TestRuleTablesMatchTheRuntime(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUndefinedNouns(unittest.TestCase):
+    """A noun with no object behind it still works, but the author can do
+    better by declaring it, and the editor should say so."""
+
+    GAME = {"objects": {
+        "SWORD": {"name": "RUSTY SWORD", "properties": "TAKEABLE"},
+        "GATE":  {"name": "IRON GATE",   "properties": "FIXED"},
+    }}
+
+    def test_a_declared_object_is_not_flagged(self):
+        self.assertEqual(
+            ed.undefined_nouns({"command": "USE SWORD"}, self.GAME), [])
+
+    def test_matching_on_the_display_name_counts_as_declared(self):
+        self.assertEqual(
+            ed.undefined_nouns({"command": "USE GATE"}, self.GAME), [])
+
+    def test_a_word_from_the_display_name_counts_as_declared(self):
+        self.assertEqual(
+            ed.undefined_nouns({"command": "USE RUSTY"}, self.GAME), [])
+
+    def test_an_unknown_noun_is_flagged(self):
+        self.assertEqual(
+            ed.undefined_nouns({"command": "TALK WIZARD"}, self.GAME), ["WIZARD"])
+
+    def test_filler_words_are_not_mistaken_for_nouns(self):
+        self.assertEqual(
+            ed.undefined_nouns({"command": "GIVE SWORD TO GATE"}, self.GAME), [])
+
+    def test_the_verb_is_never_flagged(self):
+        self.assertNotIn("TALK",
+                         ed.undefined_nouns({"command": "TALK SWORD"}, self.GAME))
+
+    def test_the_note_names_the_room_from_an_at_condition(self):
+        note = ed.undefined_noun_note(
+            "WIZARD", {"command": "TALK WIZARD", "condition": "AT 4"})
+        self.assertIn("room 4", note)
+        self.assertIn("FIXED", note)
+
+    def test_the_note_warns_when_there_is_no_at_condition(self):
+        note = ed.undefined_noun_note(
+            "WIZARD", {"command": "TALK WIZARD", "condition": ""})
+        self.assertIn("left out entirely", note)
+
+    def test_declaring_the_object_removes_the_note(self):
+        game = dict(self.GAME)
+        game = {"objects": dict(self.GAME["objects"])}
+        self.assertTrue(ed.undefined_nouns({"command": "TALK WIZARD"}, game))
+        game["objects"]["WIZARD"] = {"name": "WIZARD", "properties": "FIXED"}
+        self.assertEqual(ed.undefined_nouns({"command": "TALK WIZARD"}, game), [])
+
+    def test_the_sample_flags_only_the_wizard(self):
+        with open(REPO / "example_castle.json") as f:
+            game = json.load(f)
+        found = {w for r in game["responses"] for w in ed.undefined_nouns(r, game)}
+        self.assertEqual(found, {"WIZARD"})

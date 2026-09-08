@@ -389,6 +389,56 @@ def basic_flag_names(game):
     return {n for n in names if n}
 
 
+def resolve_noun(word, objects):
+    """Mirror Converter.resolve_object so the editor and the build agree."""
+    w = (word or "").upper().strip()
+    if not w:
+        return None
+    for oid in objects:
+        if oid.upper().startswith(w):
+            return oid
+    for oid, od in objects.items():
+        if (od.get("name") or "").upper().startswith(w):
+            return oid
+    for oid, od in objects.items():
+        if w in (od.get("name") or "").upper().split():
+            return oid
+    return None
+
+
+def undefined_nouns(resp, game):
+    """Nouns in a response's command that are not in the Objects list.
+
+    The build invents an invisible stand-in for the first of these, taking
+    its room from an AT condition. That works, but the author gets no
+    description and the thing is never listed in the room. Declaring it as
+    a FIXED object is better and is what GATE and BEAST already are.
+    """
+    objects = game.get("objects", {})
+    words = (resp.get("command") or "").upper().split()[1:]
+    return [w for w in words
+            if w not in FILLER_WORDS and resolve_noun(w, objects) is None]
+
+
+def undefined_noun_note(word, resp):
+    """The advice an author can act on, rather than a statement of fact."""
+    at_room = None
+    for term in (resp.get("condition") or "").upper().split(","):
+        term = term.strip()
+        if term.startswith("AT "):
+            at_room = term[3:].strip()
+            break
+    where = f"room {at_room}" if at_room else "no room"
+    tail = (f"The build adds an invisible stand-in in {where}."
+            if at_room else
+            "With no AT condition saying where it is, the build cannot place "
+            "it and this response is left out entirely.")
+    return (f"'{word}' is not in your Objects list. {tail} "
+            f"To give it a description and have it listed in the room, add "
+            f"{word} as an object with properties FIXED - the same as GATE "
+            f"and BEAST.")
+
+
 def basic_capacity(game):
     """Counts against the text runtime's limits, keyed as in BASIC_LIMITS.
 
@@ -637,8 +687,8 @@ class Converter:
             elif ac.startswith("SCORE "):
                 out.append(f"addvar:score,{ac[6:].strip()}")
                 self.notes.append(
-                    "Score points always add up in the C64 game — the "
-                    "'Max Score' setting is ignored.")
+                    "Score always adds up. 'Max Score' appears in the text "
+                    "build's final score; the graphical build ignores it.")
             elif ac.startswith("MSG "):
                 key = ac[4:].strip()
                 text = self.messages.get(key, "")
@@ -704,10 +754,12 @@ class Converter:
                     self.synth_objects[ident] = {"room": at_room, "name": unresolved_first}
                     owner = ident
                     self.notes.append(
-                        f"The command '{cmd}' mentions '{unresolved_first}', "
-                        f"which isn't a defined object — an invisible one "
-                        f"will be added to room {at_room} so the command "
-                        f"works in the game.")
+                        f"'{unresolved_first}' in '{cmd}' is not in your "
+                        f"Objects list. An invisible stand-in will be added "
+                        f"to room {at_room} so the command works. To give it "
+                        f"a description and have it listed in the room, add "
+                        f"{unresolved_first} as an object with properties "
+                        f"FIXED — the same as GATE and BEAST.")
                 else:
                     self.warnings.append(
                         f"The command '{cmd}' mentions "
@@ -2314,6 +2366,12 @@ class AdventureEditor:
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=5, pady=5)
 
         ttk.Label(left_frame, text="Scenes", style="Header.TLabel").pack()
+        tk.Label(left_frame,
+                 text="Graphical builds only.\nThe text (.adv) build has no\n"
+                      "way to show pictures, so\nscenes are ignored there.",
+                 bg=self.colors["bg_dark"], fg=self.colors["fg_hint"],
+                 font=self.fonts["sm"], anchor=tk.W, justify=tk.LEFT
+                 ).pack(anchor=tk.W, pady=(2, 4))
 
         listbox_frame = ttk.Frame(left_frame)
         listbox_frame.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -2925,6 +2983,8 @@ class AdventureEditor:
             marks.append("both" if not problems else "graphics only")
             for p in problems:
                 details.append(f"Line {n}: {p}")
+            for word in undefined_nouns(resp, self.game):
+                details.append(f"Line {n}: {undefined_noun_note(word, resp)}")
 
         self.responses_gutter.config(state=tk.NORMAL)
         self.responses_gutter.delete(1.0, tk.END)
@@ -2935,11 +2995,10 @@ class AdventureEditor:
         total = sum(1 for m in marks if m)
         both = sum(1 for m in marks if m == "both")
         if details:
-            head = (f"{both} of {total} responses run in both targets. "
-                    f"The rest run only in the graphical build:\n\n")
+            head = f"{both} of {total} responses run in both targets.\n\n"
             body = head + "\n".join(details)
         elif total:
-            body = f"All {total} responses run in both targets."
+            body = f"All {total} responses run in both targets, with nothing to flag."
         else:
             body = "No responses yet."
         self.responses_detail.config(state=tk.NORMAL)
@@ -2950,6 +3009,15 @@ class AdventureEditor:
     
     def create_player_tab(self):
         """Game player UI"""
+        tk.Label(self.player_tab,
+                 text="Text only. This plays your game's logic - rooms, "
+                      "objects, conditions and responses - and matches what "
+                      "the .adv build does. It never shows room artwork; to "
+                      "see your scenes, build the C64 disk.",
+                 bg=self.colors["bg_dark"], fg=self.colors["fg_hint"],
+                 font=self.fonts["sm"], anchor=tk.W, justify=tk.LEFT,
+                 wraplength=900).pack(anchor=tk.W, padx=10, pady=(10, 0))
+
         # Control buttons
         control_frame = ttk.Frame(self.player_tab)
         control_frame.pack(fill=tk.X, padx=10, pady=10)

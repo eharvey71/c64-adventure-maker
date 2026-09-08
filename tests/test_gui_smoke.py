@@ -178,9 +178,10 @@ class TestEditorSmoke(unittest.TestCase):
         self.root.update()
         body = self.app.responses_detail.get("1.0", tk.END)
         reasons = [l for l in body.split("\n") if l.startswith("Line ")]
-        # two reasons per row, well past the panel's six visible lines
-        self.assertEqual(len(reasons), 24)
-        self.assertGreater(len(reasons), int(self.app.responses_detail.cget("height")))
+        # well past the panel's six visible lines; the exact count depends on
+        # how many notes each row earns, which is not what this test is about
+        self.assertGreater(len(reasons),
+                           int(self.app.responses_detail.cget("height")))
         first, last = self.app.responses_detail_scroll.get()
         self.assertLess(last - first, 1.0, "panel reports no scrollable range")
 
