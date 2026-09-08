@@ -29,26 +29,50 @@ class TestTheRuntimeIsShipped(unittest.TestCase):
 
 
 class TestDiskFilenames(unittest.TestCase):
-    """A 1541 directory entry is 16 characters."""
+    """A 1541 directory entry is 16 characters, and the runtime asks the
+    player to type the name, so it has to be guessable."""
 
-    def adv_name(self, title):
-        slug = ed.slugify(title)
-        return slug[:16 - len(".adv")] + ".adv"
+    NAME = "game.adv"
 
-    def test_a_short_title_is_untouched(self):
-        self.assertEqual(self.adv_name("Castle"), "castle.adv")
+    def test_the_name_fits_a_directory_entry(self):
+        self.assertLessEqual(len(self.NAME), 16)
 
-    def test_a_long_title_keeps_its_extension(self):
-        name = self.adv_name("The Haunted Castle Of Doom And Peril")
-        self.assertTrue(name.endswith(".adv"), name)
-        self.assertLessEqual(len(name), 16)
+    def test_the_build_uses_it_verbatim(self):
+        import inspect
+        src = inspect.getsource(ed.AdventureEditor._run_text_build)
+        self.assertIn('adv_name = "game.adv"', src)
 
-    def test_the_stem_is_what_gets_trimmed(self):
-        name = self.adv_name("The Haunted Castle")
-        self.assertEqual(name, "the_haunted_.adv")
+    def test_it_does_not_depend_on_the_title(self):
+        # a long title used to produce "the_haunted_.adv", which nobody could
+        # be expected to guess at the runtime's prompt
+        import inspect
+        src = inspect.getsource(ed.AdventureEditor._run_text_build)
+        self.assertNotIn("slug[:16", src)
 
-    def test_the_disk_label_fits(self):
-        self.assertLessEqual(len(ed.slugify("The Haunted Castle")[:16]), 16)
+    def test_the_disk_label_still_carries_the_title(self):
+        self.assertTrue(ed.slugify("The Haunted Castle")[:16].startswith("the_haunted"))
+
+
+class TestUnreadableFileIsReported(unittest.TestCase):
+    """Loading a name that is not on the disk used to leave the player in a
+    room-less game with no explanation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (REPO / "legacy" / ed.AdventureEditor.BASIC_RUNTIME).read_text()
+
+    def test_the_loader_checks_whether_any_room_arrived(self):
+        self.assertIn("if nr=0 then", self.src)
+
+    def test_it_says_which_file_it_could_not_read(self):
+        self.assertIn('print "could not read ";f$', self.src)
+
+    def test_it_returns_to_the_prompt_rather_than_starting(self):
+        line = [l for l in self.src.splitlines() if l.startswith("1998 ")][0]
+        self.assertIn("goto 200", line)
+
+    def test_the_prompt_still_appends_the_extension(self):
+        self.assertIn('f$=f$+".adv"', self.src)
 
 
 class TestAdvLineEndings(unittest.TestCase):

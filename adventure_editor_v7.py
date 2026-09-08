@@ -3978,9 +3978,11 @@ class AdventureEditor:
                 messagebox.showerror("Disk build failed",
                                      f"Could not write the player:\n{out}")
                 return
-            # A 1541 filename is 16 characters. Trim the stem, not the
-            # extension: the runtime prompts for a name and expects .adv.
-            adv_name = slug[:16 - len(".adv")] + ".adv"
+            # A 1541 filename is 16 characters, and the runtime asks the
+            # player to type it. A truncated slug like "the_haunted_.adv" is
+            # unguessable, so the one-click build - which puts one game on
+            # one disk - always uses the same short name.
+            adv_name = "game.adv"
             rc, out = run1541("-attach", str(disk), "-write", str(adv_path),
                               f"{adv_name},s")
             if rc != 0:

@@ -73,8 +73,17 @@
 1940 print "rooms:";nr;" objects:";no
 1945 print "responses:";nq
 1950 print "vocab:";nv;" messages:";nm
+1955 if nr=0 then goto 1980
 1960 print:return
 1970 rem
+1980 rem *** nothing loaded - most likely the wrong name ***
+1985 print
+1990 print "could not read ";f$
+1992 print "no rooms were loaded."
+1994 print "check the name and try again."
+1996 print
+1998 goto 200
+1999 rem
 2000 rem *** parse settings ***
 2010 p=1:rem find = sign
 2020 for i=1 to len(l$)
