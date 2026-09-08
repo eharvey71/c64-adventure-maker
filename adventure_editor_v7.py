@@ -527,6 +527,7 @@ STDLIB_VERBS = {"x", "take", "drop", "use", "push", "pull", "open", "close",
                 "ne", "nw", "se", "sw"}
 
 VERB_MAP = {"EXAMINE": "x", "X": "x", "LOOK": "x"}   # editor verb -> stdlib verb
+VERB_MAP.update(DIR_SHORT)                          # NORTH -> n, and so on
 
 
 def slugify(title):
@@ -588,9 +589,56 @@ class Converter:
         self.groups = {}            # (owner_ident, verb) -> [branch, ...]
         self.group_order = []       # insertion order of group keys
         self.extra_verbs = {}       # verb -> [syns] to declare globally
+        self.verb_syns = {}         # stdlib verb -> [author's extra syns]
+        self.word_verb = {}         # any vocabulary word -> canonical verb
 
         self._scan_unlocks()
+        self._map_vocabulary()
         self._map_responses()
+
+    # ---- vocabulary: the author's synonyms, for every verb ----
+
+    def _map_vocabulary(self):
+        """
+        Build the word -> canonical verb map from the Vocabulary tab.
+
+        Both targets treat vocabulary as verb synonyms: the BASIC runtime
+        expands only the first word of the input (line 7100), and stdlib's
+        parser matches a verb before it matches nouns. An entry whose base
+        word is not a verb is reported rather than silently declared, which
+        would otherwise turn a noun into a verb and shadow the object.
+        """
+        response_verbs = set()
+        for resp in self.responses:
+            cmd = resp.get("command", "").strip().upper()
+            if cmd:
+                response_verbs.add(cmd.split()[0])
+
+        for base, alts in self.vocab.items():
+            base = base.strip().upper()
+            if not base:
+                continue
+            verb = VERB_MAP.get(base, base.lower())
+            words_used = {base} | {a.strip().upper() for a in alts}
+            if verb not in STDLIB_VERBS and not (words_used & response_verbs):
+                self.warnings.append(
+                    f"'{base}' in the Vocabulary tab isn't a verb the game "
+                    f"uses — no response command starts with it and the "
+                    f"engine doesn't define it. Its synonyms "
+                    f"({', '.join(alts)}) will be left out. Vocabulary "
+                    f"entries are verb synonyms in both targets.")
+                continue
+            words = [base.lower()] + [a.strip().lower() for a in alts if a.strip()]
+            self.verb_syns.setdefault(verb, [])
+            for w in words:
+                self.word_verb[w.upper()] = verb
+                if w not in self.verb_syns[verb]:
+                    self.verb_syns[verb].append(w)
+
+    def canonical_verb(self, word):
+        """The verb a typed word means, following vocabulary then VERB_MAP."""
+        w = word.strip().upper()
+        return self.word_verb.get(w) or VERB_MAP.get(w, w.lower())
 
     # ---- object resolution: ID prefix -> name prefix -> word-in-name ----
 
@@ -716,7 +764,7 @@ class Converter:
                 continue
             words = cmd.split()
             verb_word = words[0]
-            verb = VERB_MAP.get(verb_word, verb_word.lower())
+            verb = self.canonical_verb(verb_word)
 
             nouns = words[1:]
             owner = None
@@ -777,11 +825,8 @@ class Converter:
                 continue
 
             if verb not in STDLIB_VERBS and verb not in self.extra_verbs:
-                syns = [verb]
-                for base, alts in self.vocab.items():
-                    if base.upper() == verb_word:
-                        syns += [a.lower() for a in alts]
-                self.extra_verbs[verb] = syns
+                self.extra_verbs[verb] = [verb] + [
+                    w for w in self.verb_syns.get(verb, []) if w != verb]
 
             key = (owner, verb)
             if key not in self.groups:
@@ -794,6 +839,68 @@ class Converter:
             })
 
     # ---- emission ----
+
+    def emit_room_enter(self, rid, room):
+        """
+        Emit the room's onfirst/onenter blocks.
+
+        stdlib registers one $everywhere handler that clears the screen,
+        prints the description and lists the visible objects, but it never
+        shows the exits — the BASIC runtime does (line 6100), so a room
+        whose description doesn't spell the directions out leaves a
+        graphical player with nothing to go on.
+
+        A room-scoped handler replaces the $everywhere one rather than
+        adding to it (adv_run stops at the first stream that executes, and
+        the compiler orders room streams first), so this repeats stdlib's
+        body before appending the exits line. 'onfirst+onenter' is only
+        valid at the top level, so the two are emitted separately.
+        """
+        exits = room.get("exits", [0, 0, 0, 0])
+        # (label, unlock var or None) in the same N/S/E/W order the BASIC
+        # runtime prints, so the two targets read alike.
+        always, conditional = [], []
+        for i, dest in enumerate(exits):
+            direction = DIR_NAMES[i]
+            locked = any(r == str(rid) and d == direction
+                         for (r, d, _to) in self.unlocks)
+            if locked:
+                conditional.append((direction, unlock_var(str(rid), direction)))
+            elif int(dest) > 0:
+                always.append(direction)
+
+        def line(open_dirs):
+            names = [d for d in DIR_NAMES if d in open_dirs]
+            return "EXITS: " + (", ".join(names) if names else "NONE")
+
+        body = []
+        if not conditional:
+            body.append(f"msg:{line(always)}")
+        else:
+            # One branch per combination of unlocked exits. A room has at
+            # most four directions, and in practice one is unlockable.
+            def branch(idx, opened, ind):
+                t = "\t" * ind
+                if idx == len(conditional):
+                    body.append(f"{t}msg:{line(always + opened)}")
+                    return
+                direction, var = conditional[idx]
+                body.append(f"{t}if:{var}=1")
+                branch(idx + 1, opened + [direction], ind + 1)
+                body.append(f"{t}else")
+                branch(idx + 1, opened, ind + 1)
+            branch(0, [], 0)
+
+        L = []
+        for kw in ("onfirst", "onenter"):
+            L.append(f"\t{kw}")
+            L.append("\t\tclear")
+            L.append("\t\tmsg:$roomdesc")
+            L.append("\t\tifobjinattr:$any,$here,visible+listable")
+            L.append("\t\t\tmsg:You notice: +")
+            L.append("\t\t\tlistobjin:$here,visible+listable")
+            L += ["\t\t" + b for b in body]
+        return L
 
     def emit_win_block(self, ind):
         t = "\t" * ind
@@ -874,11 +981,24 @@ class Converter:
         L.append("\timgfolder:img\\")
         L.append("include:stdlib.hjt")
 
-        # Global verb declarations (with vocabulary synonyms)
+        # Global verb declarations (with vocabulary synonyms).
+        #
+        # A verb stdlib already defines still needs declaring here when the
+        # author gave it extra words: the compiler resolves `verb:x` to the
+        # existing verb id and `syn:` adds to its synonym table rather than
+        # replacing it, so EXAMINE=X,INSPECT,SEARCH reaches the same handler
+        # stdlib's own `syn:x,examine,look,l` set up.
+        declared = {}
         for verb, syns in self.extra_verbs.items():
+            declared[verb] = list(syns)
+        for verb, syns in self.verb_syns.items():
+            declared.setdefault(verb, [verb])
+            declared[verb] += [w for w in syns if w not in declared[verb]]
+        for verb in declared:
+            syns = list(dict.fromkeys(declared[verb]))
             L.append(f"verb:{verb}")
             if len(syns) > 1:
-                L.append(f"\tsyn:{','.join(dict.fromkeys(syns))}")
+                L.append(f"\tsyn:{','.join(syns)}")
 
         # Synthesized objects — declared globally with startin: because the
         # compiler resolves forward references to global objects but NOT to
@@ -939,6 +1059,7 @@ class Converter:
             L.append(f"\tname:{room.get('name', f'ROOM {rid}')}")
             L.append(f"\tdesc:{room.get('description', '')}")
             L.append(f"\timage:png\\room{int(rid):02d}_C64.png")
+            L += self.emit_room_enter(rid, room)
 
             # exits: static and unlockable
             exits = room.get("exits", [0, 0, 0, 0])
