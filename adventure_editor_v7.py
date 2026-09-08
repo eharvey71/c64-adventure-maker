@@ -353,6 +353,77 @@ def placeholder_room_png(room_num, out_path):
 # What remains genuinely graphical-only is room artwork, which the text engine
 # has no way to display. Everything else runs in both targets.
 
+# The text runtime's fixed array sizes, from the DIM statements in
+# legacy/advplay-c64-current.bas. Overflow is silent: the loader stops
+# storing past the limit and the game simply lacks the rest.
+#
+#   40 dim r$(20,4)   30 dim i$(10)    50 dim m$(10,1)
+#   60 dim f$(10)        dim o$(30,4)     dim v$(20,2)   dim rs$(20,3)
+#
+# The graphical target has no equivalent caps; disk space is its real limit.
+BASIC_LIMITS = {
+    "rooms":      20,
+    "objects":    30,
+    "vocabulary": 20,
+    "responses":  20,
+    "messages":   10,
+    "flags":      10,
+    "carried":    10,
+}
+
+
+def basic_flag_names(game):
+    """Every distinct flag the game sets or tests."""
+    names = set()
+    for resp in game.get("responses", []):
+        for term in (resp.get("action") or "").upper().split(","):
+            term = term.strip()
+            if term.startswith("SET FLAG."):
+                names.add(term[len("SET FLAG."):].strip())
+        for term in (resp.get("condition") or "").upper().split(","):
+            term = term.strip()
+            if term.startswith("NOT "):
+                term = term[4:].strip()
+            if term.startswith("FLAG."):
+                names.add(term[len("FLAG."):].strip())
+    return {n for n in names if n}
+
+
+def basic_capacity(game):
+    """Counts against the text runtime's limits, keyed as in BASIC_LIMITS.
+
+    Every value is (count, limit). 'carried' counts takeable objects, which
+    is the most a player could ever be holding at once; it is advisory
+    rather than a hard authoring limit.
+    """
+    takeable = sum(
+        1 for od in game.get("objects", {}).values()
+        if "TAKEABLE" in (od.get("properties") or "").upper())
+    return {
+        "rooms":      (len(game.get("rooms", {})), BASIC_LIMITS["rooms"]),
+        "objects":    (len(game.get("objects", {})), BASIC_LIMITS["objects"]),
+        "vocabulary": (len(game.get("vocabulary", {})), BASIC_LIMITS["vocabulary"]),
+        "responses":  (len(game.get("responses", [])), BASIC_LIMITS["responses"]),
+        "messages":   (len(game.get("messages", {})), BASIC_LIMITS["messages"]),
+        "flags":      (len(basic_flag_names(game)), BASIC_LIMITS["flags"]),
+        "carried":    (takeable, BASIC_LIMITS["carried"]),
+    }
+
+
+def capacity_text(key, count, limit):
+    """One line for a tab header, saying plainly what happens on overflow."""
+    if key == "carried":
+        if count > limit:
+            return (f"{count} takeable objects — the text engine can only hold "
+                    f"{limit} at once, so a player could not carry them all.")
+        return f"{count} takeable objects (text engine holds {limit} at once)."
+    noun = {"vocabulary": "vocabulary entries"}.get(key, key)
+    if count > limit:
+        return (f"{count} {noun} — the text engine stops at {limit}. "
+                f"The last {count - limit} would be missing from a .adv build.")
+    return f"{count} of {limit} {noun} used in the text engine."
+
+
 # Dropped from a command before matching, by both engines.
 FILLER_WORDS = {"TO", "ON", "WITH", "AT", "THE", "INTO"}
 
@@ -2088,7 +2159,8 @@ class AdventureEditor:
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=5, pady=5)
         
         ttk.Label(left_frame, text="Rooms", style="Header.TLabel").pack()
-        
+        self._capacity_label(left_frame, "rooms", anchor=tk.W, pady=(2, 0))
+
         listbox_frame = ttk.Frame(left_frame)
         listbox_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
@@ -2567,7 +2639,9 @@ class AdventureEditor:
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=5, pady=5)
         
         ttk.Label(left_frame, text="Objects", style="Header.TLabel").pack()
-        
+        self._capacity_label(left_frame, "objects", anchor=tk.W, pady=(2, 0))
+        self._capacity_label(left_frame, "carried", anchor=tk.W)
+
         listbox_frame = ttk.Frame(left_frame)
         listbox_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
@@ -2632,7 +2706,9 @@ class AdventureEditor:
         """Vocabulary editor UI"""
         ttk.Label(self.vocab_tab, text="Vocabulary Editor", style="Header.TLabel").pack(padx=5, pady=5)
         ttk.Label(self.vocab_tab, text="Enter word=synonym,synonym format (one per line)",
-                 foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 10))
+                 foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 2))
+        self._capacity_label(self.vocab_tab, "vocabulary",
+                             anchor=tk.W, padx=20, pady=(0, 10))
         
         self.vocab_text = tk.Text(self.vocab_tab, height=20, width=60,
                                  bg=self.colors["bg_light"], fg=self.colors["fg_primary"],
@@ -2689,7 +2765,8 @@ class AdventureEditor:
                   text="These work in both targets. The win message lives in "
                        "Game Settings, above.",
                   foreground=self.colors["fg_dim"],
-                  font=self.fonts["sm"]).pack(anchor=tk.W, pady=(0, 6))
+                  font=self.fonts["sm"]).pack(anchor=tk.W, pady=(0, 2))
+        self._capacity_label(frame, "messages", anchor=tk.W, pady=(0, 6))
 
         self.messages_text = tk.Text(
             frame, bg=self.colors["custmsg_bg"], fg=self.colors["custmsg_fg"],
@@ -2699,6 +2776,27 @@ class AdventureEditor:
         self.messages_text.bind("<KeyRelease>", lambda e: self.on_messages_changed())
 
         self.refresh_messages_display()
+
+    def _capacity_label(self, parent, key, **pack):
+        """A live counter for one of the text runtime's fixed limits."""
+        var = tk.StringVar(value="")
+        lbl = tk.Label(parent, textvariable=var,
+                       bg=self.colors["bg_dark"], fg=self.colors["fg_hint"],
+                       font=self.fonts["sm"], anchor=tk.W, justify=tk.LEFT)
+        lbl.pack(**pack)
+        if not hasattr(self, "_capacity_vars"):
+            self._capacity_vars = {}
+        self._capacity_vars[key] = var
+        return lbl
+
+    def refresh_capacity(self):
+        """Update every counter from the current game."""
+        if not hasattr(self, "_capacity_vars"):
+            return
+        counts = basic_capacity(self.game)
+        for key, var in self._capacity_vars.items():
+            count, limit = counts[key]
+            var.set(capacity_text(key, count, limit))
 
     RESP_GUTTER_W = 15          # characters; fits "graphics only"
 
@@ -2717,7 +2815,10 @@ class AdventureEditor:
         ttk.Label(self.responses_tab,
                   text="The left column says whether each row runs in BOTH targets "
                        "or only in the graphical build.",
-                  foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 8))
+                  foreground=self.colors["fg_dim"]).pack(anchor=tk.W, padx=20, pady=(0, 2))
+        self._capacity_label(self.responses_tab, "responses", anchor=tk.W, padx=20)
+        self._capacity_label(self.responses_tab, "flags", anchor=tk.W, padx=20,
+                             pady=(0, 8))
 
         editor = ttk.Frame(self.responses_tab)
         editor.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 6))
@@ -3112,6 +3213,7 @@ class AdventureEditor:
         self.refresh_rooms_list()
     
     def refresh_rooms_list(self):
+        self.refresh_capacity()
         self.rooms_listbox.delete(0, tk.END)
         room_ids = []
         for key in self.game["rooms"].keys():
@@ -3181,6 +3283,7 @@ class AdventureEditor:
             self.refresh_objects_list()
     
     def refresh_objects_list(self):
+        self.refresh_capacity()
         self.objects_listbox.delete(0, tk.END)
         for obj_id in sorted(self.game["objects"].keys()):
             name = self.game["objects"][obj_id]["name"]
@@ -3199,6 +3302,7 @@ class AdventureEditor:
                     self.game["vocabulary"][word] = synonyms
     
     def refresh_vocab_display(self):
+        self.refresh_capacity()
         self.vocab_text.delete(1.0, tk.END)
         for word, synonyms in self.game["vocabulary"].items():
             self.vocab_text.insert(tk.END, f"{word}={','.join(synonyms)}\n")
@@ -3216,6 +3320,7 @@ class AdventureEditor:
                     msgs[key] = val
 
         self.game["messages"] = msgs
+        self.refresh_capacity()
 
     def refresh_messages_display(self):
         """Show the custom message table."""
@@ -3239,6 +3344,7 @@ class AdventureEditor:
                         "action": parts[3].strip() if len(parts) > 3 else ""
                     })
         self.refresh_responses_compat()
+        self.refresh_capacity()
     
     def refresh_responses_display(self):
         self.responses_text.delete(1.0, tk.END)
@@ -3864,6 +3970,7 @@ class AdventureEditor:
 
     def refresh_all(self):
         self.migrate_messages()
+        self.refresh_capacity()
         self.map_positions = {}
         self._selected_map_room = None
         self.title_var.set(self.game["settings"].get("title", ""))

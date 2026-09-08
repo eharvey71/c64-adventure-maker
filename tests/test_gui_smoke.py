@@ -200,6 +200,35 @@ class TestEditorSmoke(unittest.TestCase):
         self.app.on_responses_changed(); self.root.update()
         self.assertEqual(self.app.responses_detail_scroll.get()[0], 0.0)
 
+    def test_every_limit_has_a_visible_counter(self):
+        import adventure_editor_v7 as ed
+        self.assertEqual(set(self.app._capacity_vars), set(ed.BASIC_LIMITS))
+
+    def test_counters_reflect_a_loaded_game(self):
+        import json
+        with open(REPO / "example_castle.json") as f:
+            self.app.game = json.load(f)
+        self.app.refresh_all(); self.root.update()
+        self.assertIn("8 of 20 rooms", self.app._capacity_vars["rooms"].get())
+        self.assertIn("11 of 20 responses",
+                      self.app._capacity_vars["responses"].get())
+
+    def test_counters_update_when_responses_overflow(self):
+        rows = "\n".join(f"USE T{i}::M{i}.:" for i in range(1, 26))
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert("1.0", rows + "\n")
+        self.app.on_responses_changed(); self.root.update()
+        text = self.app._capacity_vars["responses"].get()
+        self.assertIn("stops at 20", text)
+        self.assertIn("last 5", text)
+
+    def test_flag_counter_tracks_the_responses(self):
+        self.app.responses_text.delete("1.0", tk.END)
+        self.app.responses_text.insert(
+            "1.0", "USE A::X.:SET FLAG.ONE\nUSE B:NOT FLAG.TWO:Y.:\n")
+        self.app.on_responses_changed(); self.root.update()
+        self.assertIn("2 of 10 flags", self.app._capacity_vars["flags"].get())
+
     def test_crop_control_with_no_scene_selected_does_not_crash(self):
         self.app._current_scene_id = None
         self.app.on_scene_crop_changed(48)   # must be a no-op, not an error
