@@ -44,10 +44,14 @@ class TestDiskFilenames(unittest.TestCase):
 
     def test_it_does_not_depend_on_the_title(self):
         # a long title used to produce "the_haunted_.adv", which nobody could
-        # be expected to guess at the runtime's prompt
+        # be expected to guess at the runtime's prompt. The disk label may
+        # still be cut from the slug - only the name the player types matters.
         import inspect
         src = inspect.getsource(ed.AdventureEditor._run_text_build)
-        self.assertNotIn("slug[:16", src)
+        for line in src.splitlines():
+            if "adv_name" in line and "=" in line and "adv_name ==" not in line:
+                self.assertNotIn("slug", line)
+        self.assertNotIn('slug[:16 - len(".adv")]', src)
 
     def test_the_disk_label_still_carries_the_title(self):
         self.assertTrue(ed.slugify("The Haunted Castle")[:16].startswith("the_haunted"))
