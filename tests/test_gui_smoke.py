@@ -256,8 +256,11 @@ class TestEditorSmoke(unittest.TestCase):
         self.assertEqual(self.app.game["rooms"]["2"]["exits"][2], 9)
 
     def test_both_disk_builds_are_on_the_file_menu(self):
-        menu = self.root.nametowidget(self.root.cget("menu"))
-        file_menu = menu.nametowidget(menu.entrycget(0, "menu"))
+        menubar = self.root.nametowidget(self.root.cget("menu"))
+        # entry 0 is the tearoff; find the first real cascade
+        cascade = next(i for i in range(menubar.index("end") + 1)
+                       if menubar.type(i) == "cascade")
+        file_menu = self.root.nametowidget(menubar.entrycget(cascade, "menu"))
         labels = [file_menu.entrycget(i, "label")
                   for i in range(file_menu.index("end") + 1)
                   if file_menu.type(i) == "command"]
