@@ -145,6 +145,30 @@ class TestEditorSmoke(unittest.TestCase):
         self.app.on_responses_changed()
         self.root.update()
 
+    def test_win_message_field_is_populated_from_a_loaded_game(self):
+        import json
+        with open(REPO / "example_castle.json") as f:
+            game = json.load(f)
+        game["messages"]["WIN_GAME"] = "THE CROWN IS YOURS!"
+        self.app.game = game
+        self.app.refresh_all()
+        self.root.update()
+        self.assertEqual(self.app.winmessage_var.get(), "THE CROWN IS YOURS!")
+
+    def test_loading_migrates_the_old_system_messages_away(self):
+        import json
+        with open(REPO / "example_castle.json") as f:
+            game = json.load(f)
+        game["messages"]["CANT_GO"] = "MY WALL TEXT."
+        self.app.game = game
+        self.app.refresh_all()
+        self.root.update()
+        self.assertNotIn("CANT_GO", self.app.game["messages"])
+        self.assertIn("WIZARD_GREETING", self.app.game["messages"])
+
+    def test_the_system_message_section_is_gone(self):
+        self.assertFalse(hasattr(self.app, "_sys_msg_vars"))
+
     def test_crop_control_with_no_scene_selected_does_not_crash(self):
         self.app._current_scene_id = None
         self.app.on_scene_crop_changed(48)   # must be a no-op, not an error

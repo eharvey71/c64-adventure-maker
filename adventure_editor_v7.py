@@ -674,7 +674,8 @@ class Converter:
 
     def emit_win_block(self, ind):
         t = "\t" * ind
-        win_msg = self.messages.get("WIN_GAME", "CONGRATULATIONS! YOU HAVE WON!")
+        win_msg = (self.settings.get("winmessage")
+                   or "CONGRATULATIONS! YOU HAVE WON!")
         return [
             f"{t}msg:{win_msg}",
             f"{t}msg:PLAY AGAIN? (Y/N)",
@@ -1132,7 +1133,8 @@ class GameEngine:
                 # either reloads+restarts or ends).
                 self.win       = True
                 self.game_over = True
-                msgs.append(self.get_msg("WIN_GAME", "CONGRATULATIONS! YOU HAVE WON!"))
+                msgs.append(self.game.get("settings", {}).get("winmessage")
+                            or "CONGRATULATIONS! YOU HAVE WON!")
                 self.dbg("  GAME WON")
 
         return msgs
@@ -1731,7 +1733,27 @@ class AdventureEditor:
         maxscore_entry = tk.Entry(settings_frame, textvariable=self.maxscore_var, width=6, bg=self.colors["settings_entry_bg"], fg=self.colors["settings_entry_fg"], insertbackground=self.colors["teal"], bd=0, relief="flat", highlightthickness=0)
         maxscore_entry.pack(side=tk.LEFT)
         maxscore_entry.bind("<KeyRelease>", lambda e: self.update_setting("maxscore", int(self.maxscore_var.get() or 100)))
-        
+
+        # Win text is one game-wide string, not a message-table entry: the
+        # text engine reads it from [SETTINGS] and the graphical build inlines
+        # it into the win block.
+        win_frame = ttk.Frame(self.root)
+        win_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(0, 8))
+        ttk.Label(win_frame, text="Win Message:").pack(side=tk.LEFT, padx=(0, 5))
+        self.winmessage_var = tk.StringVar(
+            value=self.game["settings"].get("winmessage", ""))
+        win_entry = tk.Entry(
+            win_frame, textvariable=self.winmessage_var,
+            bg=self.colors["settings_entry_bg"], fg=self.colors["settings_entry_fg"],
+            insertbackground=self.colors["teal"], bd=0, relief="flat",
+            highlightthickness=0)
+        win_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 6))
+        win_entry.bind("<KeyRelease>",
+                       lambda e: self.update_setting("winmessage",
+                                                     self.winmessage_var.get()))
+        ttk.Label(win_frame, text="(shown when a response carries the WIN action)",
+                  foreground=self.colors["fg_dim"]).pack(side=tk.LEFT)
+
         # Notebook for tabs
         notebook = ttk.Notebook(self.root)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -2642,67 +2664,42 @@ class AdventureEditor:
     }
 
     def create_messages_tab(self):
-        """Messages editor — system messages + custom messages"""
+        """Custom messages only.
 
-        # ---- System Messages ----
-        sys_frame = tk.LabelFrame(self.messages_tab, text="System Messages  (override built-in text)", bg=self.colors["bg_mid"], fg=self.colors["fg_hint"], font=self.fonts["sm"], bd=0, relief="flat", highlightthickness=0, padx=10, pady=10)
-        sys_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        The seven system messages that used to live here were removed: the
+        text engine prints its own built-in strings and never consulted the
+        table for them, and only three of the seven ever reached the
+        graphical build. Win text moved to Game Settings, where it belongs as
+        a single game-wide string. What remains is the part that works in
+        both targets - your own named messages, referenced from a response.
+        """
+        frame = tk.LabelFrame(
+            self.messages_tab,
+            text="Custom Messages  (reference in responses with action: MSG KEYNAME)",
+            bg=self.colors["bg_mid"], fg=self.colors["fg_hint"],
+            font=self.fonts["sm"], bd=0, relief="flat",
+            highlightthickness=0, padx=10, pady=10)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        hint = ttk.Label(sys_frame,
-            text="These keys are used automatically by the engine. Edit to customise.",
-            foreground=self.colors["fg_hint"], font=self.fonts["sm_bold"])
-        hint.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 8))
+        ttk.Label(frame,
+                  text="Format:  KEYNAME=Your message text here  (one per line)",
+                  foreground=self.colors["fg_hint"],
+                  font=self.fonts["sm_bold"]).pack(anchor=tk.W, pady=(0, 2))
+        ttk.Label(frame,
+                  text="These work in both targets. The win message lives in "
+                       "Game Settings, above.",
+                  foreground=self.colors["fg_dim"],
+                  font=self.fonts["sm"]).pack(anchor=tk.W, pady=(0, 6))
 
-        self._sys_msg_vars = {}
-        for i, (key, label) in enumerate(self.SYSTEM_MESSAGES):
-            row = i + 1
-            # Key badge
-            badge = tk.Label(sys_frame, text=key,
-                             bg=self.colors["bg_dark"], fg=self.colors["accent"],
-                             font=self.fonts["sm_bold"], padx=6, pady=2,
-                             relief=tk.FLAT, width=18, anchor=tk.W)
-            badge.grid(row=row, column=0, sticky=tk.W, padx=(0, 8), pady=3)
-
-            # Human label
-            lbl = ttk.Label(sys_frame, text=label, font=self.fonts["sm"],
-                            foreground=self.colors["fg_light"])
-            lbl.grid(row=row, column=1, sticky=tk.W, padx=(0, 10))
-
-            # Entry
-            var = tk.StringVar(value=self.SYSTEM_DEFAULTS[key])
-            entry = tk.Entry(sys_frame, textvariable=var, width=50,
-                              font=self.fonts["sm"],
-                              bg=self.colors["sysmsg_entry_bg"], fg=self.colors["sysmsg_entry_fg"],
-                              insertbackground=self.colors["teal"],
-                              bd=0, relief="flat", highlightthickness=0)
-            entry.grid(row=row, column=2, sticky=tk.EW, pady=3)
-            var.trace("w", lambda *a: self.on_messages_changed())
-            self._sys_msg_vars[key] = var
-
-        sys_frame.columnconfigure(2, weight=1)
-
-        # ---- Custom Messages ----
-        cust_frame = tk.LabelFrame(self.messages_tab, text="Custom Messages  (reference in responses with action: MSG KEYNAME)", bg=self.colors["bg_mid"], fg=self.colors["fg_hint"], font=self.fonts["sm"], bd=0, relief="flat", highlightthickness=0,
-            padx=10, pady=10)
-        cust_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
-
-        hint2 = ttk.Label(cust_frame,
-            text="Format:  KEYNAME=Your message text here  (one per line)",
-            foreground=self.colors["fg_hint"], font=self.fonts["sm_bold"])
-        hint2.pack(anchor=tk.W, pady=(0, 6))
-
-        self.messages_text = tk.Text(cust_frame,
-                                     bg=self.colors["custmsg_bg"],
-                                     fg=self.colors["custmsg_fg"],
-                                     font=self.fonts["md"],
-                                     insertbackground=self.colors["violet"],
-                                     wrap=tk.WORD,
-                                     relief=tk.FLAT, bd=0, highlightthickness=0,)
+        self.messages_text = tk.Text(
+            frame, bg=self.colors["custmsg_bg"], fg=self.colors["custmsg_fg"],
+            font=self.fonts["md"], insertbackground=self.colors["violet"],
+            wrap=tk.WORD, relief=tk.FLAT, bd=0, highlightthickness=0)
         self.messages_text.pack(fill=tk.BOTH, expand=True)
         self.messages_text.bind("<KeyRelease>", lambda e: self.on_messages_changed())
 
         self.refresh_messages_display()
-    
+
     RESP_GUTTER_W = 15          # characters; fits "graphics only"
 
     def create_responses_tab(self):
@@ -3201,16 +3198,8 @@ class AdventureEditor:
             self.vocab_text.insert(tk.END, f"{word}={','.join(synonyms)}\n")
     
     def on_messages_changed(self, *args):
-        """Merge system message fields + custom text into game["messages"]."""
+        """Read the custom message table back out of the text area."""
         msgs = {}
-
-        # System messages from entry fields
-        for key, var in self._sys_msg_vars.items():
-            val = var.get().strip()
-            if val and val != self.SYSTEM_DEFAULTS.get(key, ""):
-                msgs[key] = val  # only store if overridden
-
-        # Custom messages from text area
         text = self.messages_text.get(1.0, tk.END).strip()
         for line in text.split("\n"):
             if "=" in line:
@@ -3223,24 +3212,12 @@ class AdventureEditor:
         self.game["messages"] = msgs
 
     def refresh_messages_display(self):
-        """Populate system fields and custom text from game data."""
+        """Show the custom message table."""
         msgs = self.game.get("messages", {})
-
-        # Fill system message fields
-        if hasattr(self, "_sys_msg_vars"):
-            for key, var in self._sys_msg_vars.items():
-                var.set(msgs.get(key, self.SYSTEM_DEFAULTS.get(key, "")))
-
-        # Fill custom messages (anything not a system key)
-        system_keys = {k for k, _ in self.SYSTEM_MESSAGES}
-        custom_lines = []
-        for key, val in msgs.items():
-            if key not in system_keys:
-                custom_lines.append(f"{key}={val}")
-
+        lines = [f"{key}={val}" for key, val in msgs.items()]
         if hasattr(self, "messages_text"):
             self.messages_text.delete(1.0, tk.END)
-            self.messages_text.insert(1.0, "\n".join(custom_lines))
+            self.messages_text.insert(1.0, "\n".join(lines))
     
     def on_responses_changed(self, *args):
         text = self.responses_text.get(1.0, tk.END).strip()
@@ -3855,13 +3832,39 @@ class AdventureEditor:
         # Author names in particular came through as line noise.
         return "\n".join(lines).upper()
 
+    LEGACY_SYSTEM_MESSAGE_KEYS = (
+        "CANT_GO", "DONT_UNDERSTAND", "NOT_HERE", "INVENTORY_EMPTY",
+        "ITEM_TAKEN", "ITEM_DROPPED", "WIN_GAME",
+    )
+
+    def migrate_messages(self):
+        """Move a game off the old system-message table.
+
+        WIN_GAME becomes settings["winmessage"], which both targets read. The
+        other six are dropped: the text engine printed its own built-in
+        strings and never looked at the table, and only two of the six ever
+        reached the graphical build. Custom messages are untouched.
+        """
+        msgs = self.game.setdefault("messages", {})
+        settings = self.game.setdefault("settings", {})
+        moved = None
+        if msgs.get("WIN_GAME") and not settings.get("winmessage"):
+            settings["winmessage"] = msgs["WIN_GAME"]
+            moved = msgs["WIN_GAME"]
+        dropped = [k for k in self.LEGACY_SYSTEM_MESSAGE_KEYS if k in msgs]
+        for k in dropped:
+            del msgs[k]
+        return moved, dropped
+
     def refresh_all(self):
+        self.migrate_messages()
         self.map_positions = {}
         self._selected_map_room = None
         self.title_var.set(self.game["settings"].get("title", ""))
         self.author_var.set(self.game["settings"].get("author", ""))
         self.startroom_var.set(str(self.game["settings"].get("startroom", 1)))
         self.maxscore_var.set(str(self.game["settings"].get("maxscore", 100)))
+        self.winmessage_var.set(self.game["settings"].get("winmessage", ""))
         self.refresh_rooms_list()
         self.refresh_objects_list()
         self.refresh_vocab_display()
