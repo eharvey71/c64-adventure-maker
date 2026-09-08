@@ -255,6 +255,18 @@ class TestEditorSmoke(unittest.TestCase):
         self.root.update()
         self.assertEqual(self.app.game["rooms"]["2"]["exits"][2], 9)
 
+    def test_both_disk_builds_are_on_the_file_menu(self):
+        menu = self.root.nametowidget(self.root.cget("menu"))
+        file_menu = menu.nametowidget(menu.entrycget(0, "menu"))
+        labels = [file_menu.entrycget(i, "label")
+                  for i in range(file_menu.index("end") + 1)
+                  if file_menu.type(i) == "command"]
+        self.assertTrue(any("graphical" in l for l in labels), labels)
+        self.assertTrue(any("text only" in l for l in labels), labels)
+
+    def test_the_text_build_entry_point_exists(self):
+        self.assertTrue(callable(self.app.export_and_build_text))
+
     def test_crop_control_with_no_scene_selected_does_not_crash(self):
         self.app._current_scene_id = None
         self.app.on_scene_crop_changed(48)   # must be a no-op, not an error

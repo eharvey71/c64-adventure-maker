@@ -1838,7 +1838,8 @@ class AdventureEditor:
         file_menu.add_command(label="Save As...", command=self.save_game_as)
         file_menu.add_separator()
         file_menu.add_command(label="Export .adv", command=self.export_adv)
-        file_menu.add_command(label="Export & Build C64 Disk...", command=self.export_and_build)
+        file_menu.add_command(label="Export & Build C64 Disk (graphical)...", command=self.export_and_build)
+        file_menu.add_command(label="Export & Build C64 Disk (text only)...", command=self.export_and_build_text)
         file_menu.add_command(label="Export StoryTllr Project...", command=self.export_storytllr)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
@@ -3623,6 +3624,13 @@ class AdventureEditor:
     def _kit_dir(self):
         return Path(__file__).resolve().parent
 
+    BASIC_RUNTIME = "advplay-c64-current.bas"
+
+    def _kit_basic_runtime(self):
+        """The BASIC player source shipped in legacy/."""
+        path = self._kit_dir() / "legacy" / self.BASIC_RUNTIME
+        return path if path.exists() else None
+
     def _kit_engine_file(self, name):
         """Find a bundled engine file (engine/ next to the editor)."""
         p = self._kit_dir() / "engine" / name
@@ -3673,6 +3681,10 @@ class AdventureEditor:
             "script_compiler", self._exe_names("script_compiler"),
             [self._kit_dir(), self._kit_dir() / "tools",
              "~/dev/storytllr-mac-port"])
+
+    def _find_petcat(self):
+        """petcat tokenises the BASIC runtime; it ships with VICE."""
+        return self._find_tool("petcat", self._exe_names("petcat"), VICE_DIRS)
 
     def _find_c1541(self):
         return self._find_tool(
@@ -3847,6 +3859,140 @@ class AdventureEditor:
             msg = (f"Your C64 game is ready!\n\nDisk image:\n{disk}\n\n"
                    f"Load it in any C64 emulator, or write it to real "
                    f"hardware.")
+            if x64sc:
+                if messagebox.askyesno("Build complete",
+                                       msg + "\n\nPlay it now in VICE?"):
+                    subprocess.Popen([x64sc, str(disk)],
+                                     stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL)
+            else:
+                messagebox.showinfo("Build complete", msg)
+        except Exception as e:
+            messagebox.showerror("Build failed", f"Unexpected error: {e}")
+
+    def export_and_build_text(self):
+        """File > Export & Build C64 Disk (text only) — entry point."""
+        self.root.after(100, self._do_export_and_build_text)
+
+    def _do_export_and_build_text(self):
+        """One click from game to a playable .adv disk.
+
+        Mirrors the graphical build: report anything worth knowing, find the
+        tools, then tokenise the runtime and write both files to a fresh
+        disk image.
+        """
+        cap_errors, cap_warnings = self.check_capacity()
+        compat = self.check_hardware_compat()
+        notes = cap_errors + compat + cap_warnings
+        if notes:
+            msg = "Before building the text disk, a few notes:\n\n"
+            msg += "\n".join(f"• {w}" for w in notes)
+            msg += "\n\nBuild anyway?"
+            if not messagebox.askyesno("Text build notes", msg):
+                return
+
+        petcat = self._find_petcat()
+        if not petcat:
+            messagebox.showerror(
+                "petcat not found",
+                "petcat tokenises the BASIC runtime and ships with VICE. "
+                "Install VICE, or use File > Export .adv and build the disk "
+                "by hand — see docs/MANUAL-BUILDS.md section B.")
+            return
+        c1541 = self._find_c1541()
+        if not c1541:
+            messagebox.showerror(
+                "VICE not found",
+                "c1541 builds the disk image and ships with VICE. Install "
+                "VICE, or use File > Export .adv for a manual build.")
+            return
+        runtime = self._kit_basic_runtime()
+        if not runtime:
+            messagebox.showerror(
+                "Runtime missing",
+                f"legacy/{self.BASIC_RUNTIME} wasn't found. The text disk "
+                f"needs the BASIC player source to tokenise.")
+            return
+
+        cfg = self._load_kit_config()
+        build_root = cfg.get("build_dir")
+        if not build_root or not Path(build_root).exists():
+            build_root = filedialog.askdirectory(
+                title="Choose a folder to keep your C64 builds in")
+            if not build_root:
+                return
+            cfg["build_dir"] = build_root
+            self._save_kit_config(cfg)
+
+        self.root.after(50, lambda: self._run_text_build(
+            petcat, c1541, runtime, Path(build_root)))
+
+    def _run_text_build(self, petcat, c1541, runtime, build_root):
+        import subprocess
+        try:
+            slug = slugify(self.game.get("settings", {}).get("title", "game"))
+            proj = build_root / f"{slug}-text"
+            proj.mkdir(parents=True, exist_ok=True)
+
+            # The .adv needs CR line endings, not LF: the runtime reads a
+            # character at a time and ends a line on CHR$(13).
+            adv_text = self.generate_adv()
+            adv_path = proj / f"{slug}.adv"
+            with open(adv_path, "wb") as f:
+                for line in adv_text.split("\n"):
+                    line = line.rstrip()
+                    if line:
+                        f.write(line.encode("ascii", "replace") + b"\r")
+
+            # petcat needs lowercase BASIC source, which is how it ships.
+            prg = proj / "advplay.prg"
+            r = subprocess.run([petcat, "-w2", "-o", str(prg), "--", str(runtime)],
+                               capture_output=True, text=True)
+            if not prg.exists():
+                messagebox.showerror(
+                    "Tokenise failed",
+                    "petcat could not tokenise the BASIC runtime:\n\n"
+                    + ((r.stdout or "") + (r.stderr or ""))[:600])
+                return
+
+            disk = proj / "bin" / f"{slug}.d64"
+            disk.parent.mkdir(exist_ok=True)
+            if disk.exists():
+                disk.unlink()
+            label = slug[:16]
+
+            def run1541(*args):
+                rr = subprocess.run([c1541, *args], capture_output=True, text=True)
+                return rr.returncode, (rr.stdout or "") + (rr.stderr or "")
+
+            rc, out = run1541("-format", f"{label},01", "d64", str(disk))
+            if not disk.exists():
+                messagebox.showerror("Disk build failed",
+                                     f"Could not create the disk image:\n{out}")
+                return
+
+            # Destination names must be lowercase; c1541 maps uppercase to
+            # the wrong PETSCII range.
+            rc, out = run1541("-attach", str(disk), "-write", str(prg), "advplay,p")
+            if rc != 0:
+                messagebox.showerror("Disk build failed",
+                                     f"Could not write the player:\n{out}")
+                return
+            # A 1541 filename is 16 characters. Trim the stem, not the
+            # extension: the runtime prompts for a name and expects .adv.
+            adv_name = slug[:16 - len(".adv")] + ".adv"
+            rc, out = run1541("-attach", str(disk), "-write", str(adv_path),
+                              f"{adv_name},s")
+            if rc != 0:
+                messagebox.showerror("Disk build failed",
+                                     f"Could not write the game file:\n{out}")
+                return
+
+            x64sc = self._find_x64sc()
+            msg = (f"Your text adventure disk is ready!\n\nDisk image:\n{disk}\n\n"
+                   f'On the C64:  LOAD "ADVPLAY",8  then  RUN\n'
+                   f"When it asks for the adventure file, enter:\n"
+                   f"{adv_name.upper()}")
             if x64sc:
                 if messagebox.askyesno("Build complete",
                                        msg + "\n\nPlay it now in VICE?"):
