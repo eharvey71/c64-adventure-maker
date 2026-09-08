@@ -243,7 +243,7 @@
 6030 rem
 6040 rem show objects in room
 6050 for i=1 to no
-6060   if val(o$(i,1))=cr then print "you see: ";o$(i,0)
+6060   if val(o$(i,1))=cr then if o$(i,3)<>"hidden" then print "you see: ";o$(i,0)
 6070 next i
 6080 rem
 6090 rem show exits

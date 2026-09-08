@@ -205,3 +205,111 @@ class TestUndefinedNouns(unittest.TestCase):
             game = json.load(f)
         found = {w for r in game["responses"] for w in ed.undefined_nouns(r, game)}
         self.assertEqual(found, {"WIZARD"})
+
+
+class TestHiddenObjects(unittest.TestCase):
+    """A HIDDEN object is present and interactable but never listed, so an
+    undeclared noun can become a real object without spoiling a secret."""
+
+    def game(self, props):
+        return {"settings": {"startroom": 1}, "vocabulary": {}, "messages": {},
+                "responses": [],
+                "rooms": {"1": {"name": "R", "description": "D",
+                                "exits": [0, 0, 0, 0]}},
+                "objects": {"THING": {"name": "THING", "start_room": 1,
+                                      "description": "A THING.",
+                                      "properties": props}}}
+
+    def emitted_class(self, props):
+        out = ed.Converter(self.game(props), crop_offset=0).emit()
+        for line in out.splitlines():
+            if line.endswith(":thing"):
+                return line.split(":")[0]
+        return None
+
+    def test_hidden_uses_the_unlisted_class(self):
+        self.assertEqual(self.emitted_class("HIDDEN"), "scenery")
+
+    def test_fixed_stays_listed(self):
+        self.assertEqual(self.emitted_class("FIXED"), "sceneryobj")
+
+    def test_takeable_stays_takeable(self):
+        self.assertEqual(self.emitted_class("TAKEABLE"), "normalobj")
+
+    def test_a_synthesized_stand_in_is_also_unlisted(self):
+        with open(REPO / "example_castle.json") as f:
+            g = json.load(f)
+        out = ed.Converter(g, crop_offset=0).emit()
+        self.assertIn("scenery:wizard", out)
+        self.assertNotIn("sceneryobj:wizard", out)
+
+    def test_the_text_runtime_skips_hidden_in_the_room_listing(self):
+        src = (REPO / "legacy" / "advplay-c64-current.bas").read_text()
+        line = [l for l in src.splitlines() if l.startswith("6060 ")][0]
+        self.assertIn('<>"hidden"', line)
+
+    def test_hidden_is_not_takeable_in_the_text_runtime(self):
+        # the take check accepts only "takeable", so HIDDEN cannot be picked up
+        src = (REPO / "legacy" / "advplay-c64-current.bas").read_text()
+        self.assertIn('if o$(i,3)<>"takeable"', src)
+
+    def test_the_player_does_not_list_a_hidden_object(self):
+        g = self.game("HIDDEN")
+        e = ed.GameEngine(g)
+        self.assertNotIn("THING", e.room_description().upper().split("YOU SEE")[-1]
+                         if "YOU SEE" in e.room_description().upper() else "")
+
+    def test_the_player_can_still_examine_a_hidden_object(self):
+        e = ed.GameEngine(self.game("HIDDEN"))
+        msg, _ = e.execute_command("EXAMINE THING")
+        self.assertIn("A THING.", msg.upper())
+
+
+class TestAdoption(unittest.TestCase):
+    adopt = staticmethod(ed.AdventureEditor.adopt_undefined_nouns)
+
+    class FakeApp:
+        adopt_undefined_nouns = ed.AdventureEditor.adopt_undefined_nouns
+        def __init__(self, game): self.game = game
+
+    def run_adopt(self, game):
+        app = self.FakeApp(game)
+        return app.adopt_undefined_nouns(), app.game
+
+    def test_an_undeclared_noun_becomes_a_hidden_object(self):
+        added, game = self.run_adopt({
+            "objects": {},
+            "responses": [{"command": "TALK WIZARD", "condition": "AT 4"}]})
+        self.assertEqual(added, ["WIZARD"])
+        self.assertEqual(game["objects"]["WIZARD"]["properties"], "HIDDEN")
+        self.assertEqual(game["objects"]["WIZARD"]["start_room"], 4)
+
+    def test_it_needs_an_at_condition_to_know_the_room(self):
+        added, game = self.run_adopt({
+            "objects": {},
+            "responses": [{"command": "TALK WIZARD", "condition": ""}]})
+        self.assertEqual(added, [])
+        self.assertEqual(game["objects"], {})
+
+    def test_a_declared_object_is_left_alone(self):
+        added, game = self.run_adopt({
+            "objects": {"WIZARD": {"name": "W", "properties": "FIXED"}},
+            "responses": [{"command": "TALK WIZARD", "condition": "AT 4"}]})
+        self.assertEqual(added, [])
+        self.assertEqual(game["objects"]["WIZARD"]["properties"], "FIXED")
+
+    def test_running_twice_adds_nothing_further(self):
+        game = {"objects": {},
+                "responses": [{"command": "TALK WIZARD", "condition": "AT 4"}]}
+        self.run_adopt(game)
+        added, _ = self.run_adopt(game)
+        self.assertEqual(added, [])
+
+    def test_an_authored_description_is_not_overwritten(self):
+        game = {"objects": {},
+                "responses": [{"command": "TALK WIZARD", "condition": "AT 4"}]}
+        self.run_adopt(game)
+        game["objects"]["WIZARD"]["description"] = "A STOOPED FIGURE."
+        self.run_adopt(game)
+        self.assertEqual(game["objects"]["WIZARD"]["description"],
+                         "A STOOPED FIGURE.")

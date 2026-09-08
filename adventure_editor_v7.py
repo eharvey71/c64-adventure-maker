@@ -884,7 +884,10 @@ class Converter:
         # compiler resolves forward references to global objects but NOT to
         # room-nested ones (ifobjin:wizard,$here fails if wizard is nested).
         for ident, meta in self.synth_objects.items():
-            L.append(f"sceneryobj:{ident}")
+            # 'scenery' is visible but not listable: present and usable, but
+            # the room never announces it. The text build has no object here
+            # at all, so this is what keeps the two targets consistent.
+            L.append(f"scenery:{ident}")
             L.append(f"\tname:{meta['name']}")
             L.append(f"\tstartin:room{meta['room']}")
             for (owner, verb) in list(self.group_order):
@@ -894,8 +897,18 @@ class Converter:
         # Global objects
         for oid, od in self.objects.items():
             ident = obj_ident(oid)
-            takeable = "TAKEABLE" in od.get("properties", "").upper()
-            cls = "normalobj" if takeable else "sceneryobj"
+            props = od.get("properties", "").upper()
+            takeable = "TAKEABLE" in props
+            # stdlib's classes: normalobj is visible+takeable+listable,
+            # sceneryobj is visible+listable, and scenery is visible only.
+            # A HIDDEN object is present and interactable but never listed,
+            # which is how a secret stays secret in both targets.
+            if takeable:
+                cls = "normalobj"
+            elif "HIDDEN" in props:
+                cls = "scenery"
+            else:
+                cls = "sceneryobj"
             L.append(f"{cls}:{ident}")
             L.append(f"\tname:{od.get('name', oid)}")
             desc = od.get("description", "").strip()
@@ -1489,8 +1502,11 @@ class GameEngine:
             "",
         ]
 
-        # Objects in room
-        here = self.room_objects()
+        # Objects in room. A HIDDEN object is present and can be examined or
+        # used, but the room never announces it — matching the runtime's
+        # line 6060, so a secret reads the same in the Player and on disk.
+        here = [(oid, od) for oid, od in self.room_objects()
+                if "HIDDEN" not in (od.get("properties") or "").upper()]
         if here:
             lines.append("You see: " + ", ".join(od["name"] for _, od in here))
 
@@ -2868,6 +2884,41 @@ class AdventureEditor:
         self._capacity_vars[key] = var
         return lbl
 
+    def adopt_undefined_nouns(self):
+        """Turn an undeclared noun into a real, hidden object.
+
+        A response like TALK WIZARD names something with no object behind it.
+        The build used to invent a stand-in that the author never saw. It is
+        added to the Objects list instead, marked HIDDEN so it is never
+        listed in the room - the secret survives, and the author can now give
+        it a description.
+
+        Only nouns with an AT condition are adopted, since that is the only
+        way to know which room they belong in. Returns the ids added.
+        """
+        objects = self.game.setdefault("objects", {})
+        added = []
+        for resp in self.game.get("responses", []):
+            for word in undefined_nouns(resp, self.game):
+                room = None
+                for term in (resp.get("condition") or "").upper().split(","):
+                    term = term.strip()
+                    if term.startswith("AT "):
+                        room = term[3:].strip()
+                        break
+                if not room or not room.isdigit():
+                    continue
+                if word in objects:
+                    continue
+                objects[word] = {
+                    "name": word,
+                    "start_room": int(room),
+                    "description": "",
+                    "properties": "HIDDEN",
+                }
+                added.append(word)
+        return added
+
     def refresh_capacity(self):
         """Update every counter from the current game."""
         if not hasattr(self, "_capacity_vars"):
@@ -4067,6 +4118,7 @@ class AdventureEditor:
 
     def refresh_all(self):
         self.migrate_messages()
+        self.adopt_undefined_nouns()
         self.refresh_capacity()
         self.map_positions = {}
         self._selected_map_room = None

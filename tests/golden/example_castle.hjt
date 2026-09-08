@@ -13,7 +13,7 @@ verb:hit
 verb:talk
 	syn:talk,speak,ask
 verb:give
-sceneryobj:wizard
+scenery:wizard
 	name:WIZARD
 	startin:room4
 	verb:talk
