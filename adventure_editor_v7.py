@@ -1797,13 +1797,17 @@ class AdventureEditor:
         self.startroom_var = tk.StringVar(value=str(self.game["settings"].get("startroom", 1)))
         startroom_entry = tk.Entry(settings_frame, textvariable=self.startroom_var, width=4, bg=self.colors["settings_entry_bg"], fg=self.colors["settings_entry_fg"], insertbackground=self.colors["teal"], bd=0, relief="flat", highlightthickness=0)
         startroom_entry.pack(side=tk.LEFT, padx=(0, 20))
-        startroom_entry.bind("<KeyRelease>", lambda e: self.update_setting("startroom", int(self.startroom_var.get() or 1)))
+        startroom_entry.bind("<KeyRelease>", lambda e: self.update_setting(
+            "startroom", self._int_field(self.startroom_var.get(),
+                                         self.game["settings"].get("startroom", 1))))
 
         ttk.Label(settings_frame, text="Max Score:").pack(side=tk.LEFT, padx=(0, 5))
         self.maxscore_var = tk.StringVar(value=str(self.game["settings"].get("maxscore", 100)))
         maxscore_entry = tk.Entry(settings_frame, textvariable=self.maxscore_var, width=6, bg=self.colors["settings_entry_bg"], fg=self.colors["settings_entry_fg"], insertbackground=self.colors["teal"], bd=0, relief="flat", highlightthickness=0)
         maxscore_entry.pack(side=tk.LEFT)
-        maxscore_entry.bind("<KeyRelease>", lambda e: self.update_setting("maxscore", int(self.maxscore_var.get() or 100)))
+        maxscore_entry.bind("<KeyRelease>", lambda e: self.update_setting(
+            "maxscore", self._int_field(self.maxscore_var.get(),
+                                        self.game["settings"].get("maxscore", 100))))
 
         # Win text is one game-wide string, not a message-table entry: the
         # text engine reads it from [SETTINGS] and the graphical build inlines
@@ -2777,6 +2781,23 @@ class AdventureEditor:
 
         self.refresh_messages_display()
 
+    @staticmethod
+    def _int_field(text, fallback):
+        """Read a number out of a live entry without raising.
+
+        These fields are traced on every keystroke, so they are read
+        mid-edit: empty while the user clears them, and briefly holding a
+        stray letter. Anything unparseable keeps the last good value rather
+        than crashing the callback and leaving the widget half-updated.
+        """
+        text = (text or "").strip()
+        if text == "":
+            return fallback
+        try:
+            return int(text)
+        except (TypeError, ValueError):
+            return fallback
+
     def _capacity_label(self, parent, key, **pack):
         """A live counter for one of the text runtime's fixed limits."""
         var = tk.StringVar(value="")
@@ -3151,13 +3172,19 @@ class AdventureEditor:
         if not room_id_str or room_id_str == "0":
             return
         
+        # Keep whatever the room already had for any exit that is mid-edit,
+        # so a stray keystroke never silently clears a connection.
+        prev = self.game["rooms"].get(room_id_str, {}).get("exits", [0, 0, 0, 0])
+        prev = (list(prev) + [0, 0, 0, 0])[:4]
         self.game["rooms"][room_id_str] = {
             "name": self.room_name_var.get(),
             "description": self.room_desc_text.get(1.0, tk.END).strip(),
-            "exits": [int(self.room_exit_n.get() or 0),
-                     int(self.room_exit_s.get() or 0),
-                     int(self.room_exit_e.get() or 0),
-                     int(self.room_exit_w.get() or 0)],
+            "exits": [
+                self._int_field(self.room_exit_n.get(), prev[0]),
+                self._int_field(self.room_exit_s.get(), prev[1]),
+                self._int_field(self.room_exit_e.get(), prev[2]),
+                self._int_field(self.room_exit_w.get(), prev[3]),
+            ],
             "scene_id": getattr(self, "room_scene_id", None),
         }
         self.refresh_rooms_list()
@@ -3256,7 +3283,9 @@ class AdventureEditor:
         
         self.game["objects"][obj_id] = {
             "name": self.obj_name_var.get(),
-            "start_room": int(self.obj_room_var.get() or 1),
+            "start_room": self._int_field(
+                self.obj_room_var.get(),
+                self.game["objects"].get(obj_id, {}).get("start_room", 1)),
             "description": self.obj_desc_text.get(1.0, tk.END).strip(),
             "properties": self.obj_props_var.get()
         }

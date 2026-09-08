@@ -218,3 +218,41 @@ class TestPngWriter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTolerantNumericFields(unittest.TestCase):
+    """Numeric entries are traced on every keystroke, so they get read
+    mid-edit. None of these may raise."""
+
+    parse = staticmethod(ed.AdventureEditor._int_field)
+
+    def test_a_plain_number(self):
+        self.assertEqual(self.parse("7", 1), 7)
+
+    def test_whitespace_is_trimmed(self):
+        self.assertEqual(self.parse("  7  ", 1), 7)
+
+    def test_empty_falls_back(self):
+        self.assertEqual(self.parse("", 4), 4)
+
+    def test_whitespace_only_falls_back(self):
+        self.assertEqual(self.parse("   ", 4), 4)
+
+    def test_a_letter_falls_back(self):
+        self.assertEqual(self.parse("E", 4), 4)
+
+    def test_a_word_falls_back(self):
+        self.assertEqual(self.parse("north", 4), 4)
+
+    def test_a_partial_number_falls_back(self):
+        self.assertEqual(self.parse("12a", 4), 4)
+
+    def test_a_lone_minus_falls_back(self):
+        self.assertEqual(self.parse("-", 4), 4)
+
+    def test_a_negative_number_is_accepted(self):
+        # -1 is how an object in the inventory is stored
+        self.assertEqual(self.parse("-1", 4), -1)
+
+    def test_none_falls_back(self):
+        self.assertEqual(self.parse(None, 4), 4)

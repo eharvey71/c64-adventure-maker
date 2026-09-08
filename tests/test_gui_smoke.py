@@ -229,6 +229,31 @@ class TestEditorSmoke(unittest.TestCase):
         self.app.on_responses_changed(); self.root.update()
         self.assertIn("2 of 10 flags", self.app._capacity_vars["flags"].get())
 
+    def test_a_letter_in_an_exit_field_does_not_crash(self):
+        import json
+        with open(REPO / "example_castle.json") as f:
+            self.app.game = json.load(f)
+        self.app.refresh_all()
+        self.app.select_room_in_editor("2")
+        self.root.update()
+        before = list(self.app.game["rooms"]["2"]["exits"])
+        for bad in ("E", "north", "-", "  ", "12a"):
+            self.app.room_exit_e.set(bad)
+            self.root.update()
+            self.assertEqual(self.app.game["rooms"]["2"]["exits"], before,
+                             f"{bad!r} changed the stored exits")
+
+    def test_a_valid_exit_still_applies(self):
+        import json
+        with open(REPO / "example_castle.json") as f:
+            self.app.game = json.load(f)
+        self.app.refresh_all()
+        self.app.select_room_in_editor("2")
+        self.root.update()
+        self.app.room_exit_e.set("9")
+        self.root.update()
+        self.assertEqual(self.app.game["rooms"]["2"]["exits"][2], 9)
+
     def test_crop_control_with_no_scene_selected_does_not_crash(self):
         self.app._current_scene_id = None
         self.app.on_scene_crop_changed(48)   # must be a no-op, not an error
