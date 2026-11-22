@@ -6,7 +6,6 @@ eyes on a real C64 — but it does prove the editor builds its tabs and that
 the crop control reads, writes, and re-renders.
 """
 import base64
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -16,6 +15,9 @@ sys.path.insert(0, str(REPO))
 
 import adventure_editor_v7 as ed  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tk_support  # noqa: E402
+
 try:
     import tkinter as tk
     _NO_TK = None
@@ -23,24 +25,18 @@ except ImportError as exc:      # pragma: no cover
     tk, _NO_TK = None, str(exc)
 
 
-def has_display():
-    return bool(os.environ.get("DISPLAY") or sys.platform in ("darwin", "win32"))
-
-
 @unittest.skipIf(tk is None, f"Tkinter unavailable: {_NO_TK}")
-@unittest.skipUnless(has_display(), "no display available")
+@unittest.skipUnless(tk_support.has_display(), "no display available")
 class TestEditorSmoke(unittest.TestCase):
     def setUp(self):
         try:
-            self.root = tk.Tk()
+            self.root, self.app = tk_support.fresh_editor(ed)
         except tk.TclError as exc:
+            tk_support.release()
             self.skipTest(f"cannot open display: {exc}")
-        self.root.withdraw()
-        self.app = ed.AdventureEditor(self.root)
-        self.root.update()
 
     def tearDown(self):
-        self.root.destroy()
+        tk_support.release()
 
     def add_scene(self, sid="ART", crop=None):
         scene = {"name": sid, "koala_b64": base64.b64encode(bytes(10001)).decode()}

@@ -13,7 +13,6 @@ Thresholds follow WCAG 2.1:
 Contrast here is luminance-based, not hue-based, so it holds under any
 form of color vision deficiency.
 """
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -22,6 +21,9 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 import adventure_editor_v7 as ed  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tk_support  # noqa: E402
 
 try:
     import tkinter as tk
@@ -77,23 +79,21 @@ class TestContrastMath(unittest.TestCase):
 
 
 @unittest.skipIf(tk is None, f"Tkinter unavailable: {_NO_TK}")
-@unittest.skipUnless(os.environ.get("DISPLAY") or sys.platform in ("darwin", "win32"),
+@unittest.skipUnless(tk_support.has_display(),
                      "no display available")
 class TestThemeContrast(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            cls.root = tk.Tk()
+            cls.root, cls.app = tk_support.fresh_editor(ed)
         except tk.TclError as exc:
+            tk_support.release()
             raise unittest.SkipTest(f"cannot open display: {exc}")
-        cls.root.withdraw()
-        cls.app = ed.AdventureEditor(cls.root)
-        cls.root.update()
         cls.style = ttk.Style()
 
     @classmethod
     def tearDownClass(cls):
-        cls.root.destroy()
+        tk_support.release()
 
     def look(self, style_name, option):
         value = self.style.lookup(style_name, option)
