@@ -3803,10 +3803,6 @@ class AdventureEditor:
             [self._kit_dir(), self._kit_dir() / "tools",
              "~/dev/storytllr-mac-port"])
 
-    def _find_petcat(self):
-        """petcat tokenises the BASIC runtime; it ships with VICE."""
-        return self._find_tool("petcat", self._exe_names("petcat"), VICE_DIRS)
-
     def _find_c1541(self):
         return self._find_tool(
             "c1541", self._exe_names("c1541"), VICE_DIRS)
@@ -3998,9 +3994,10 @@ class AdventureEditor:
     def _do_export_and_build_text(self):
         """One click from game to a playable .adv disk.
 
-        Mirrors the graphical build: report anything worth knowing, find the
-        tools, then tokenise the runtime and write both files to a fresh
-        disk image.
+        Mirrors the graphical build: report anything worth knowing, then
+        tokenise the runtime and write both files to a fresh disk image.
+        Both steps are pure Python (c64build), so this needs no VICE; VICE
+        is only offered afterwards, to play the disk.
         """
         cap_errors, cap_warnings = self.check_capacity()
         compat = self.check_hardware_compat()
@@ -4012,21 +4009,6 @@ class AdventureEditor:
             if not messagebox.askyesno("Text build notes", msg):
                 return
 
-        petcat = self._find_petcat()
-        if not petcat:
-            messagebox.showerror(
-                "petcat not found",
-                "petcat tokenises the BASIC runtime and ships with VICE. "
-                "Install VICE, or use File > Export .adv and build the disk "
-                "by hand — see docs/MANUAL-BUILDS.md section B.")
-            return
-        c1541 = self._find_c1541()
-        if not c1541:
-            messagebox.showerror(
-                "VICE not found",
-                "c1541 builds the disk image and ships with VICE. Install "
-                "VICE, or use File > Export .adv for a manual build.")
-            return
         runtime = self._kit_basic_runtime()
         if not runtime:
             messagebox.showerror(
@@ -4046,10 +4028,18 @@ class AdventureEditor:
             self._save_kit_config(cfg)
 
         self.root.after(50, lambda: self._run_text_build(
-            petcat, c1541, runtime, Path(build_root)))
+            runtime, Path(build_root)))
 
-    def _run_text_build(self, petcat, c1541, runtime, build_root):
+    def _run_text_build(self, runtime, build_root):
         import subprocess
+        try:
+            import c64build
+        except ImportError:
+            messagebox.showerror(
+                "c64build.py missing",
+                "The text build needs c64build.py, which belongs next to "
+                "adventure_editor_v7.py. Copy it back from the repository.")
+            return
         try:
             slug = slugify(self.game.get("settings", {}).get("title", "game"))
             proj = build_root / f"{slug}-text"
@@ -4058,57 +4048,39 @@ class AdventureEditor:
             # The .adv needs CR line endings, not LF: the runtime reads a
             # character at a time and ends a line on CHR$(13).
             adv_text = self.generate_adv()
+            adv_bytes = b"".join(
+                line.rstrip().encode("ascii", "replace") + b"\r"
+                for line in adv_text.split("\n") if line.rstrip())
             adv_path = proj / f"{slug}.adv"
-            with open(adv_path, "wb") as f:
-                for line in adv_text.split("\n"):
-                    line = line.rstrip()
-                    if line:
-                        f.write(line.encode("ascii", "replace") + b"\r")
+            adv_path.write_bytes(adv_bytes)
 
-            # petcat needs lowercase BASIC source, which is how it ships.
-            prg = proj / "advplay.prg"
-            r = subprocess.run([petcat, "-w2", "-o", str(prg), "--", str(runtime)],
-                               capture_output=True, text=True)
-            if not prg.exists():
+            # Byte-identical to `petcat -w2`; the runtime ships lowercase,
+            # which is what that expects.
+            try:
+                prg_bytes = c64build.tokenize_basic(
+                    Path(runtime).read_text(encoding="ascii"))
+            except (c64build.BasicError, UnicodeDecodeError) as e:
                 messagebox.showerror(
                     "Tokenise failed",
-                    "petcat could not tokenise the BASIC runtime:\n\n"
-                    + ((r.stdout or "") + (r.stderr or ""))[:600])
+                    f"The BASIC runtime couldn't be tokenised:\n\n{e}")
                 return
+            (proj / "advplay.prg").write_bytes(prg_bytes)
 
-            disk = proj / "bin" / f"{slug}.d64"
-            disk.parent.mkdir(exist_ok=True)
-            if disk.exists():
-                disk.unlink()
-            label = slug[:16]
-
-            def run1541(*args):
-                rr = subprocess.run([c1541, *args], capture_output=True, text=True)
-                return rr.returncode, (rr.stdout or "") + (rr.stderr or "")
-
-            rc, out = run1541("-format", f"{label},01", "d64", str(disk))
-            if not disk.exists():
-                messagebox.showerror("Disk build failed",
-                                     f"Could not create the disk image:\n{out}")
-                return
-
-            # Destination names must be lowercase; c1541 maps uppercase to
-            # the wrong PETSCII range.
-            rc, out = run1541("-attach", str(disk), "-write", str(prg), "advplay,p")
-            if rc != 0:
-                messagebox.showerror("Disk build failed",
-                                     f"Could not write the player:\n{out}")
-                return
             # A 1541 filename is 16 characters, and the runtime asks the
             # player to type it. A truncated slug like "the_haunted_.adv" is
             # unguessable, so the one-click build - which puts one game on
             # one disk - always uses the same short name.
             adv_name = "game.adv"
-            rc, out = run1541("-attach", str(disk), "-write", str(adv_path),
-                              f"{adv_name},s")
-            if rc != 0:
+            disk = proj / "bin" / f"{slug}.d64"
+            disk.parent.mkdir(exist_ok=True)
+            try:
+                image = c64build.D64(slug[:16], "01")
+                image.add_file("advplay", prg_bytes, "prg")
+                image.add_file(adv_name, adv_bytes, "seq")
+                image.save(disk)
+            except c64build.DiskError as e:
                 messagebox.showerror("Disk build failed",
-                                     f"Could not write the game file:\n{out}")
+                                     f"Could not build the disk image:\n\n{e}")
                 return
 
             x64sc = self._find_x64sc()

@@ -1,9 +1,8 @@
 """Tests for the one-click text (.adv) disk build.
 
-The build itself needs petcat and c1541, so the parts that can be checked
-without them are checked here: the file naming rules a 1541 imposes, the
-line endings the runtime requires, and that the pieces the build depends on
-are present in the repository.
+The build is pure Python (c64build), so it runs here end to end: the file
+naming rules a 1541 imposes, the line endings the runtime requires, and the
+disk the editor actually writes.
 """
 import json
 import sys
@@ -12,6 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(Path(__file__).resolve().parent))   # test_c64build
 
 import adventure_editor_v7 as ed  # noqa: E402
 
@@ -109,14 +109,74 @@ class TestAdvLineEndings(unittest.TestCase):
         self.assertIsInstance(self.encode(text), bytes)
 
 
-class TestToolLookup(unittest.TestCase):
-    def test_petcat_is_searched_for_in_the_vice_locations(self):
-        import inspect
-        src = inspect.getsource(ed.AdventureEditor._find_petcat)
-        self.assertIn("VICE_DIRS", src)
+class TestNoViceNeeded(unittest.TestCase):
+    """The text build used to shell out to petcat and c1541."""
 
-    def test_petcat_gets_an_exe_suffix_on_windows(self):
-        self.assertIn("petcat", ed.AdventureEditor._exe_names("petcat"))
+    def test_the_build_does_not_call_petcat_or_c1541(self):
+        import inspect
+        for fn in (ed.AdventureEditor._do_export_and_build_text,
+                   ed.AdventureEditor._run_text_build):
+            src = inspect.getsource(fn)
+            self.assertNotIn("petcat", src.replace("`petcat -w2`", ""))
+            self.assertNotIn("c1541", src)
+
+
+class TestTheEditorsBuild(unittest.TestCase):
+    """Run the editor's own text build, with the dialogs captured."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        import c64build
+        cls.cb = c64build
+        cls.shown = []
+        shown = cls.shown
+
+        class Dialogs:
+            def showerror(self, title, msg): shown.append(("error", title, msg))
+            def showinfo(self, title, msg): shown.append(("info", title, msg))
+            def askyesno(self, title, msg): shown.append(("ask", title, msg)); return False
+
+        with open(REPO / "example_castle.json") as f:
+            game = json.load(f)
+
+        class Editor:
+            _int_field = ed.AdventureEditor._int_field
+            generate_adv = ed.AdventureEditor.generate_adv
+            def _find_x64sc(self): return None
+        Editor.game = game
+        cls.editor = Editor()
+
+        saved, ed.messagebox = ed.messagebox, Dialogs()
+        try:
+            cls.out = Path(tempfile.mkdtemp())
+            ed.AdventureEditor._run_text_build(
+                cls.editor, REPO / "legacy" / ed.AdventureEditor.BASIC_RUNTIME,
+                cls.out)
+        finally:
+            ed.messagebox = saved
+        disks = list(cls.out.rglob("*.d64"))
+        cls.disk = disks[0].read_bytes() if disks else None
+
+    def test_it_reports_success(self):
+        self.assertEqual([k for k, _t, _m in self.shown], ["info"], self.shown)
+
+    def test_it_writes_a_disk(self):
+        self.assertIsNotNone(self.disk)
+        self.assertEqual(len(self.disk), 174848)
+
+    def test_the_disk_holds_the_player_and_the_game(self):
+        from test_c64build import read_directory
+        files = read_directory(self.disk)
+        self.assertEqual([(f[0], f[1]) for f in files],
+                         [(b"ADVPLAY", 0x82), (b"GAME.ADV", 0x81)])
+        runtime = (REPO / "legacy" / ed.AdventureEditor.BASIC_RUNTIME).read_text()
+        self.assertEqual(files[0][5], self.cb.tokenize_basic(runtime))
+        self.assertTrue(files[1][5].startswith(b"[SETTINGS]\r"))
+
+    def test_the_label_carries_the_title(self):
+        from test_c64build import sector
+        self.assertEqual(sector(self.disk, 18, 0)[0x90:0xA0], b"THE_HAUNTED_CAST")
 
 
 if __name__ == "__main__":

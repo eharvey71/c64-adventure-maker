@@ -21,8 +21,10 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install Tkinter and a virtual display
-        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      # VICE lets tests/test_c64build.py check the pure-Python tokeniser
+      # and disk writer byte for byte against the real petcat and c1541.
+      - name: Install Tkinter, a virtual display and VICE
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb vice
 
       - name: Byte-compile the editor
         run: python -m py_compile adventure_editor_v7.py

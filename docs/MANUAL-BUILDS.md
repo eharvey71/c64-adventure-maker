@@ -48,24 +48,35 @@ three patches fix upstream bugs:
 
 ## B. Text-only build (original BASIC runtime)
 
-The project began as a text-only engine written in C64 BASIC
-(`advplay-c64-v3.bas`). The editor still exports for it, but **the BASIC
-runtime itself is not in this repository yet** — see `legacy/README.md`
-for what belongs there. Supply your own copy to follow these steps:
+The project began as a text-only engine written in C64 BASIC. Its current
+runtime is `legacy/advplay-c64-current.bas`.
 
-1. **File → Export .adv** — writes the plain-text game file.
-2. Tokenize the runtime and build a disk (VICE tools):
+**File → Export & Build C64 Disk (text only)...** does the whole build in
+one step and needs no VICE: the editor tokenises the runtime and writes the
+`.d64` itself (`c64build.py`, byte-identical to `petcat` and `c1541`). On
+the C64: `LOAD "ADVPLAY",8` then `RUN`, and enter `GAME` when asked for the
+adventure file.
+
+To build by hand with VICE instead:
+
+1. **File → Export .adv** — writes the game file.
+2. Convert its line endings. The export uses ordinary newlines, but the
+   runtime reads one character at a time and ends a line on a carriage
+   return:
    ```bash
-   petcat -w2 -o advplay.prg -- advplay-c64-v3.bas
+   python3 -c "import sys; t=open(sys.argv[1]).read(); open(sys.argv[2],'wb').write(b''.join(l.rstrip().encode('ascii')+b'\r' for l in t.split('\n') if l.rstrip()))" mygame.adv mygame-cr.adv
+   ```
+3. Tokenise the runtime and build a disk:
+   ```bash
+   petcat -w2 -o advplay.prg -- legacy/advplay-c64-current.bas
    c1541 -format "adventure,01" d64 mygame.d64 \
          -write advplay.prg advplay \
-         -write mygame.adv "mygame.adv,s"
+         -write mygame-cr.adv "game.adv,s"
    ```
-3. On the C64: `LOAD "ADVPLAY",8` then `RUN`.
 
-BASIC-runtime limits the editor checks for you: 20 rooms, 30 objects,
-20 vocabulary entries, 40 messages, 20 responses. Text only — for
-graphics, use the StoryTllr path.
+BASIC-runtime limits, shown as counters in the editor: 20 rooms, 30
+objects, 20 vocabulary entries, 20 responses, 10 messages, 10 flags.
+Text only — for graphics, use the StoryTllr path.
 
 ## C. Useful gotchas (learned the hard way)
 

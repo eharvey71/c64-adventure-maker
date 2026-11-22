@@ -33,8 +33,11 @@ Marco Giorgini (MIT license) — see `engine/ATTRIBUTION.md`.
 ## What you need
 
 1. **Python 3.8+** with Tkinter (`python3 -m tkinter` should open a window)
-2. **[VICE](https://vice-emu.sourceforge.io/)** — provides `c1541`
-   (builds disk images) and `x64sc` (plays them).
+2. **[VICE](https://vice-emu.sourceforge.io/)** — provides `x64sc`
+   (plays the disks) and, for the graphical build, `c1541` (builds its
+   disk image). The text build doesn't need VICE at all: it tokenises
+   the BASIC player and writes the `.d64` itself (`c64build.py`, checked
+   byte for byte against VICE's own `petcat` and `c1541`).
    macOS: `brew install vice` · Debian/Ubuntu: `sudo apt install vice`
    The editor finds them on `PATH` or in the usual install locations on
    macOS, Linux, and Windows; otherwise it asks once and remembers.
