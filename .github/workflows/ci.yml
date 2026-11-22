@@ -31,6 +31,26 @@ jobs:
       - name: Run tests
         run: xvfb-run -a python -m unittest discover -s tests -v
 
+  # The GUI tests also run under macOS's own window system (Aqua), which
+  # behaves differently from Linux's Xvfb: a hang there once went unnoticed
+  # because CI only ever ran Linux. The timeout turns a hang into a failure.
+  test-macos:
+    name: tests (macOS, Python 3.12)
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tkinter is available
+        run: python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
   syntax-floor:
     name: Python 3.8 syntax floor
     runs-on: ubuntu-latest
