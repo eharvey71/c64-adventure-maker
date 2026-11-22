@@ -200,11 +200,14 @@ class TestUndefinedNouns(unittest.TestCase):
         game["objects"]["WIZARD"] = {"name": "WIZARD", "properties": "FIXED"}
         self.assertEqual(ed.undefined_nouns({"command": "TALK WIZARD"}, game), [])
 
-    def test_the_sample_flags_only_the_wizard(self):
+    def test_the_sample_flags_its_deliberate_stand_ins(self):
+        # WIZARD and BOOKCASE are referred to by responses but never
+        # declared as objects - that is how the castle keeps them out of
+        # the room listing. Anything else showing up here is an oversight.
         with open(REPO / "example_castle.json") as f:
             game = json.load(f)
         found = {w for r in game["responses"] for w in ed.undefined_nouns(r, game)}
-        self.assertEqual(found, {"WIZARD"})
+        self.assertEqual(found, {"WIZARD", "BOOKCASE"})
 
 
 class TestHiddenObjects(unittest.TestCase):

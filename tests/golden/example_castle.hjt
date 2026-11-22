@@ -42,6 +42,18 @@ scenery:wizard
 				msg:THE WIZARD LOOKS UP FROM HIS TOME. 'AH, A BRAVE ADVENTURER! BRING ME THE GOLDEN CHALICE FROM THE VAULT BELOW AND I SHALL REWARD YOU HANDSOMELY.'
 		if:tmp=0
 			msg:I DON'T UNDERSTAND THAT.
+scenery:bookcase
+	name:BOOKCASE
+	startin:room9
+	verb:x
+		setvar:tmp,0
+		if:tmp=0
+			ifisroom:room9
+				setvar:tmp,1
+				msg:YOU FIND A LEVER AND PULL IT. A SECRET DOOR OPENS
+				setvar:uiw,1
+		if:tmp=0
+			msg:$objdesc
 normalobj:sword
 	name:RUSTY SWORD
 	desc:AN OLD SWORD WITH A DULL BLADE. STILL SHARP ENOUGH TO BE USEFUL.
@@ -244,16 +256,18 @@ room:room4
 		ifobjinattr:$any,$here,visible+listable
 			msg:You notice: +
 			listobjin:$here,visible+listable
-		msg:EXITS: NORTH
+		msg:EXITS: NORTH, WEST
 	onenter
 		clear
 		msg:$roomdesc
 		ifobjinattr:$any,$here,visible+listable
 			msg:You notice: +
 			listobjin:$here,visible+listable
-		msg:EXITS: NORTH
+		msg:EXITS: NORTH, WEST
 	verb:n
 		goto:room3
+	verb:w
+		goto:room9
 room:room5
 	name:KITCHEN
 	desc:AN OLD KITCHEN WITH RUSTY POTS, PANS, AND PLENTY OF SHINY OBJECTS. A DOOR LEADS WEST BACK TO THE COURTYARD.
@@ -347,6 +361,57 @@ room:room8
 		msg:EXITS: NORTH
 	verb:n
 		goto:room7
+room:room9
+	name:STUDY
+	desc:YOU'RE IN DIMLY LIT, SMALL STUDY. STACKS OF BOOKS LINE THE WALLS WITH A LARGE BOOKCASE IN ONE CORNER.
+	image:png\room09_C64.png
+	onfirst
+		clear
+		msg:$roomdesc
+		ifobjinattr:$any,$here,visible+listable
+			msg:You notice: +
+			listobjin:$here,visible+listable
+		if:uiw=1
+			msg:EXITS: EAST, WEST
+		else
+			msg:EXITS: EAST
+	onenter
+		clear
+		msg:$roomdesc
+		ifobjinattr:$any,$here,visible+listable
+			msg:You notice: +
+			listobjin:$here,visible+listable
+		if:uiw=1
+			msg:EXITS: EAST, WEST
+		else
+			msg:EXITS: EAST
+	verb:e
+		goto:room4
+	verb:w
+		if:uiw=1
+			goto:room10
+		else
+			msg:YOU CAN'T GO THAT WAY.
+room:room10
+	name:SECRET READING ROOM
+	desc:YOU ARE IN AN EMPTY ROOM WITH A JEWEL-ENCRUSTED BOOK STAND IN THE CENTER
+	image:png\room10_C64.png
+	onfirst
+		clear
+		msg:$roomdesc
+		ifobjinattr:$any,$here,visible+listable
+			msg:You notice: +
+			listobjin:$here,visible+listable
+		msg:EXITS: EAST
+	onenter
+		clear
+		msg:$roomdesc
+		ifobjinattr:$any,$here,visible+listable
+			msg:You notice: +
+			listobjin:$here,visible+listable
+		msg:EXITS: EAST
+	verb:e
+		goto:room9
 room:$start
 	image:png\room01_C64.png
 	onfirst
@@ -362,4 +427,5 @@ room:$start
 		setvar:fbeastdead,0
 		setvar:ubw,0
 		setvar:ugs,0
+		setvar:uiw,0
 		goto:room1

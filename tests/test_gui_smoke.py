@@ -210,8 +210,13 @@ class TestEditorSmoke(unittest.TestCase):
         with open(REPO / "example_castle.json") as f:
             self.app.game = json.load(f)
         self.app.refresh_all(); self.root.update()
-        self.assertIn("8 of 20 rooms", self.app._capacity_vars["rooms"].get())
-        self.assertIn("11 of 20 responses",
+        # derived from the fixture, not hardcoded: editing the sample
+        # castle should not break a test about the counter wiring
+        rooms = len(self.app.game["rooms"])
+        responses = len(self.app.game["responses"])
+        self.assertIn(f"{rooms} of {ed.BASIC_LIMITS['rooms']} rooms",
+                      self.app._capacity_vars["rooms"].get())
+        self.assertIn(f"{responses} of {ed.BASIC_LIMITS['responses']} responses",
                       self.app._capacity_vars["responses"].get())
 
     def test_counters_update_when_responses_overflow(self):
