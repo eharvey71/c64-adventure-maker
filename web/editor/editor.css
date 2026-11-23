@@ -161,6 +161,37 @@ main { flex: 1; padding: 1rem; }
 .note { margin: -.4rem 0 .8rem; color: var(--error); font-size: .9rem; }
 
 .text-panel { max-width: 60rem; }
+
+/* -- responses: a gutter of marks that scrolls with the text -- */
+h3 { font-size: .9rem; margin: 1rem 0 .4rem; color: var(--hint); font-weight: 600; }
+.resp-editor { display: grid; grid-template-columns: 8.5rem 1fr; gap: .3rem; }
+.resp-editor textarea, .resp-gutter {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: .9rem;
+  line-height: 21px;
+  padding: .35rem .45rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.resp-editor textarea { border-color: var(--border); white-space: pre; overflow-x: auto; }
+.resp-gutter { background: var(--bg-mid); overflow: hidden; white-space: pre; }
+.resp-gutter span { display: block; height: 21px; }
+.resp-gutter .both { color: var(--teal); }
+.resp-gutter .graphics { color: var(--hint); }
+.resp-gutter .bad { color: #ff7b72; }
+.resp-report {
+  background: var(--bg-mid);
+  border-radius: 4px;
+  padding: .6rem .8rem;
+  white-space: pre-wrap;
+  font-size: .9rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+@media (max-width: 720px) {
+  .resp-editor { grid-template-columns: 6.5rem 1fr; }
+  .resp-editor textarea, .resp-gutter { font-size: .8rem; }
+}
 .text-panel textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; }
 
 .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; color: var(--hint); font-size: .9rem; }

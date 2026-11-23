@@ -1650,6 +1650,76 @@ class GameEngine:
 # tools/script_compiler, the web page one that runs the WebAssembly build.
 # =============================================================================
 
+# -- the Responses screen, shared by the desktop and web editors ----------
+
+def responses_text(responses):
+    """Responses as the editor shows them: COMMAND:CONDITION:MESSAGE:ACTION."""
+    return "".join(f"{r['command']}:{r['condition']}:{r['message']}:{r['action']}\n"
+                   for r in responses)
+
+
+def parse_responses(text):
+    """Read responses back out of the editor text.
+
+    A line needs at least COMMAND:CONDITION:MESSAGE; anything shorter is
+    left out, as is anything past a fourth colon.
+    """
+    responses = []
+    for line in text.strip().split("\n"):
+        if line.strip() and ":" in line:
+            parts = line.split(":")
+            if len(parts) >= 3:
+                responses.append({
+                    "command": parts[0].strip(),
+                    "condition": parts[1].strip(),
+                    "message": parts[2].strip(),
+                    "action": parts[3].strip() if len(parts) > 3 else "",
+                })
+    return responses
+
+
+def responses_report(raw, game):
+    """What the text engine does with each line of the Responses text.
+
+    Returns (marks, body): one short mark per line ("both", "graphics only",
+    "not a response" or "" for a blank line), and a plain-text explanation
+    of everything flagged.
+    """
+    marks, details = [], []
+    for n, line in enumerate(raw.split("\n"), 1):
+        if not line.strip():
+            marks.append("")
+            continue
+        if ":" not in line:
+            marks.append("not a response")
+            details.append(f"Line {n}: not in COMMAND:CONDITION:MESSAGE:ACTION form.")
+            continue
+        parts = line.split(":")
+        resp = {
+            "command":   parts[0].strip(),
+            "condition": parts[1].strip() if len(parts) > 1 else "",
+            "message":   parts[2].strip() if len(parts) > 2 else "",
+            "action":    parts[3].strip() if len(parts) > 3 else "",
+        }
+        problems = basic_incompatibilities(resp)
+        marks.append("both" if not problems else "graphics only")
+        for p in problems:
+            details.append(f"Line {n}: {p}")
+        for word in undefined_nouns(resp, game):
+            details.append(f"Line {n}: {undefined_noun_note(word, resp)}")
+
+    total = sum(1 for m in marks if m)
+    both = sum(1 for m in marks if m == "both")
+    if details:
+        body = (f"{both} of {total} responses run in both targets.\n\n"
+                + "\n".join(details))
+    elif total:
+        body = f"All {total} responses run in both targets, with nothing to flag."
+    else:
+        body = "No responses yet."
+    return marks, body
+
+
 TEXT_DISK_ID = "01"
 GRAPHICAL_DISK_ID = "66"
 TEXT_PLAYER_NAME = "advplay"
@@ -3317,28 +3387,7 @@ class AdventureEditor:
         if not hasattr(self, "responses_gutter"):
             return
         raw = self.responses_text.get(1.0, tk.END).rstrip("\n")
-        marks, details = [], []
-        for n, line in enumerate(raw.split("\n"), 1):
-            if not line.strip():
-                marks.append("")
-                continue
-            if ":" not in line:
-                marks.append("not a response")
-                details.append(f"Line {n}: not in COMMAND:CONDITION:MESSAGE:ACTION form.")
-                continue
-            parts = line.split(":")
-            resp = {
-                "command":   parts[0].strip(),
-                "condition": parts[1].strip() if len(parts) > 1 else "",
-                "message":   parts[2].strip() if len(parts) > 2 else "",
-                "action":    parts[3].strip() if len(parts) > 3 else "",
-            }
-            problems = basic_incompatibilities(resp)
-            marks.append("both" if not problems else "graphics only")
-            for p in problems:
-                details.append(f"Line {n}: {p}")
-            for word in undefined_nouns(resp, self.game):
-                details.append(f"Line {n}: {undefined_noun_note(word, resp)}")
+        marks, body = responses_report(raw, self.game)
 
         self.responses_gutter.config(state=tk.NORMAL)
         self.responses_gutter.delete(1.0, tk.END)
@@ -3346,15 +3395,6 @@ class AdventureEditor:
         self.responses_gutter.config(state=tk.DISABLED)
         self.responses_gutter.yview_moveto(self.responses_text.yview()[0])
 
-        total = sum(1 for m in marks if m)
-        both = sum(1 for m in marks if m == "both")
-        if details:
-            head = f"{both} of {total} responses run in both targets.\n\n"
-            body = head + "\n".join(details)
-        elif total:
-            body = f"All {total} responses run in both targets, with nothing to flag."
-        else:
-            body = "No responses yet."
         self.responses_detail.config(state=tk.NORMAL)
         self.responses_detail.delete(1.0, tk.END)
         self.responses_detail.insert(1.0, body)
@@ -3782,26 +3822,14 @@ class AdventureEditor:
             self.messages_text.insert(1.0, "\n".join(lines))
     
     def on_responses_changed(self, *args):
-        text = self.responses_text.get(1.0, tk.END).strip()
-        self.game["responses"] = []
-        for line in text.split("\n"):
-            if line.strip() and ":" in line:
-                parts = line.split(":")
-                if len(parts) >= 3:
-                    self.game["responses"].append({
-                        "command": parts[0].strip(),
-                        "condition": parts[1].strip() if len(parts) > 1 else "",
-                        "message": parts[2].strip() if len(parts) > 2 else "",
-                        "action": parts[3].strip() if len(parts) > 3 else ""
-                    })
+        self.game["responses"] = parse_responses(
+            self.responses_text.get(1.0, tk.END))
         self.refresh_responses_compat()
         self.refresh_capacity()
     
     def refresh_responses_display(self):
         self.responses_text.delete(1.0, tk.END)
-        for resp in self.game["responses"]:
-            line = f"{resp['command']}:{resp['condition']}:{resp['message']}:{resp['action']}\n"
-            self.responses_text.insert(tk.END, line)
+        self.responses_text.insert(tk.END, responses_text(self.game["responses"]))
         self.refresh_responses_compat()
     
     # File operations

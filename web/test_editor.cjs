@@ -82,6 +82,13 @@ async function main() {
           "rooms are listed as 'ID: NAME'");
     check(await page.inputValue("#setting-title") === source.settings.title, "the title is shown");
     check(await page.inputValue("#room-name") === source.rooms["1"].name, "the first room is open");
+    // Every screen is filled in on opening, not just the one in view.
+    check(await page.locator("#object-list li").count() === Object.keys(source.objects).length
+          && (await page.inputValue("#vocab-text")).startsWith(Object.keys(source.vocabulary)[0] + "=")
+          && (await page.inputValue("#resp-text")).split("\n").filter(Boolean).length === source.responses.length,
+          "opening a file fills in every screen");
+    check((await page.textContent('[data-capacity="objects"]')).startsWith(
+            `${Object.keys(source.objects).length} of 30`), "and the counters");
     if (shots) await page.screenshot({ path: path.join(shots, "editor-rooms.png") });
 
     stage("building the text disk");
@@ -161,6 +168,32 @@ async function main() {
     if (shots) await page.screenshot({ path: path.join(shots, "editor-messages.png") });
     await tab("objects");
     if (shots) await page.screenshot({ path: path.join(shots, "editor-objects.png") });
+
+    stage("responses");
+    await tab("responses");
+    const respText = await page.inputValue("#resp-text");
+    const gutter = async () => page.$$eval("#resp-gutter span", (els) => els.map((e) => e.textContent));
+    // What the desktop says about the same text, with this game's objects.
+    const page_game = await page.evaluate(() => localStorage.getItem("c64-adventure-maker:game"));
+    const desktop = JSON.parse(execFileSync(python, ["-c", `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(path.join(WEB, ".."))})
+import adventure_editor_v7 as ed
+raw, game = json.load(sys.stdin)
+marks, body = ed.responses_report(raw, json.loads(game))
+print(json.dumps({"marks": marks, "body": body}))`],
+      { input: JSON.stringify([respText.replace(/\n+$/, ""), page_game]) }).toString());
+    check(JSON.stringify(await gutter()) === JSON.stringify(desktop.marks),
+          `each of the ${source.responses.length} responses is marked as the desktop marks it`);
+    check(await page.textContent("#resp-report") === desktop.body,
+          "the notes match the desktop's");
+    await page.fill("#resp-text", respText + "WAVE WAND:AT 1:YOU WAVE IT.:TELEPORT 3\nJUST SOME WORDS\n");
+    const marks = await gutter();
+    check(marks.at(-2) === "graphics only" && marks.at(-1) === "not a response",
+          "new lines are marked as you type", marks.slice(-2).join(" / "));
+    check(/TELEPORT/.test(await page.textContent("#resp-report")),
+          "the notes explain what the text engine can't do");
+    if (shots) await page.screenshot({ path: path.join(shots, "editor-responses.png"), fullPage: true });
     await page.waitForTimeout(600);  // autosave runs after a short pause
 
     stage("reloading: the work should still be there");
@@ -179,8 +212,7 @@ async function main() {
           "the saved file has the new room, with its exit", JSON.stringify(g.rooms[newId]));
     check(JSON.stringify(g.rooms["2"].exits) === JSON.stringify(source.rooms["2"].exits),
           "typing a letter into an exit leaves the exit as it was");
-    check(JSON.stringify(g.responses) === JSON.stringify(source.responses)
-          && JSON.stringify(g.scenes) === JSON.stringify(source.scenes),
+    check(JSON.stringify(g.scenes) === JSON.stringify(source.scenes),
           "everything not edited is saved unchanged");
     check(!("SWORD" in g.objects) && g.objects.BLADE.name === "SHINY SWORD"
           && JSON.stringify(Object.keys(g.objects)) === JSON.stringify(
@@ -196,6 +228,9 @@ async function main() {
           && g.messages.NOTE3 === "Message 3"
           && Object.entries(source.messages).every(([k, v]) => g.messages[k] === v),
           "the saved messages are the old ones plus the new ones");
+    check(JSON.stringify(g.responses) === JSON.stringify([...source.responses,
+            { command: "WAVE WAND", condition: "AT 1", message: "YOU WAVE IT.", action: "TELEPORT 3" }]),
+          "the saved responses are the old ones plus the new one, without the line that isn't a response");
 
     stage("opening something that isn't a game");
     const bad = path.join(require("os").tmpdir(), "not-a-game.json");

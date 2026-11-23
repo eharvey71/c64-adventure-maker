@@ -1,7 +1,7 @@
 // The web editor's screens. The game is the same JSON the desktop editor
 // opens and saves; every build goes through the desktop's Python (python.js).
 
-import { startPython, buildText, buildGraphical, capacity } from "./python.js";
+import { startPython, buildText, buildGraphical, capacity, responsesReport } from "./python.js";
 
 const STORAGE_KEY = "c64-adventure-maker:game";
 const DIRECTIONS = ["N", "S", "E", "W"];
@@ -186,10 +186,6 @@ function selectRoom(id) {
   selectedRoom = id in game.rooms ? id : null;
   renderRoomList();
   renderRoomDetails();
-  renderObjectList();
-  renderObjectDetails();
-  renderTextPanels();
-  refreshCapacity();
 }
 
 function renderRoomDetails() {
@@ -369,11 +365,49 @@ function parseMessages(text) {
   return msgs;
 }
 
+/** Read exactly as the desktop's parse_responses reads it. */
+function parseResponses(text) {
+  const out = [];
+  for (const line of text.trim().split("\n")) {
+    if (!line.trim() || !line.includes(":")) continue;
+    const parts = line.split(":");
+    if (parts.length < 3) continue;
+    out.push({ command: parts[0].trim(), condition: parts[1].trim(),
+               message: parts[2].trim(), action: (parts[3] ?? "").trim() });
+  }
+  return out;
+}
+
+const MARK_CLASS = { both: "both", "graphics only": "graphics", "not a response": "bad" };
+
+/** The gutter marks and the report, from the desktop's responses_report. */
+function refreshResponseReport() {
+  const text = $("resp-text").value.replace(/\n+$/, "");
+  const report = responsesReport(text, game);
+  const gutter = $("resp-gutter");
+  gutter.replaceChildren();
+  if (!report) {
+    $("resp-report").textContent = "Checking needs Python, which is still loading…";
+    return;
+  }
+  for (const mark of report.marks) {
+    const span = document.createElement("span");
+    span.textContent = mark;
+    if (mark) span.className = MARK_CLASS[mark] || "";
+    gutter.append(span);
+  }
+  gutter.scrollTop = $("resp-text").scrollTop;
+  $("resp-report").textContent = report.body;
+}
+
 function renderTextPanels() {
   $("vocab-text").value = Object.entries(game.vocabulary)
     .map(([w, syns]) => `${w}=${syns.join(",")}\n`).join("");
   $("messages-text").value = Object.entries(game.messages)
     .map(([k, v]) => `${k}=${v}`).join("\n");
+  $("resp-text").value = game.responses
+    .map((r) => `${r.command}:${r.condition}:${r.message}:${r.action}\n`).join("");
+  refreshResponseReport();
 }
 
 function wireTextPanels() {
@@ -384,6 +418,14 @@ function wireTextPanels() {
   $("messages-text").addEventListener("input", (e) => {
     game.messages = parseMessages(e.target.value);
     changed();
+  });
+  $("resp-text").addEventListener("input", (e) => {
+    game.responses = parseResponses(e.target.value);
+    changed();
+    refreshResponseReport();
+  });
+  $("resp-text").addEventListener("scroll", (e) => {
+    $("resp-gutter").scrollTop = e.target.scrollTop;
   });
 }
 
@@ -398,6 +440,8 @@ function wireTabs() {
         t.setAttribute("aria-selected", String(on));
         $(t.getAttribute("aria-controls")).hidden = !on;
       }
+      // Its notes depend on the objects, which may have changed meanwhile.
+      if (tab.getAttribute("aria-controls") === "tab-responses") refreshResponseReport();
     });
   }
 }
@@ -487,6 +531,10 @@ function renderAll() {
   renderSettings();
   renderRoomList();
   renderRoomDetails();
+  renderObjectList();
+  renderObjectDetails();
+  renderTextPanels();
+  refreshCapacity();
 }
 
 function start() {
@@ -503,7 +551,11 @@ function start() {
   renderAll();
   // Python loads in the background, so the first build doesn't wait for it.
   startPython((msg) => { $("python-status").textContent = msg; })
-    .then(() => { refreshCapacity(); document.body.dataset.python = "ready"; })
+    .then(() => {
+      refreshCapacity();
+      refreshResponseReport();
+      document.body.dataset.python = "ready";
+    })
     .catch((e) => { $("python-status").textContent = `Python didn't load: ${e.message}`; });
 }
 

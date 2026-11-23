@@ -43,6 +43,10 @@ import c64build
 ENGINE = Path("/repo/engine")
 RUNTIME = Path("/repo/legacy/advplay-c64-current.bas")
 
+def responses_lines(raw, game_json):
+    marks, body = ed.responses_report(raw, json.loads(game_json))
+    return json.dumps({"marks": marks, "body": body})
+
 def capacity_lines(game_json):
     game = json.loads(game_json)
     return json.dumps({k: {"text": ed.capacity_text(k, n, limit), "over": n > limit}
@@ -60,6 +64,15 @@ def capacity_lines(game_json):
 export function capacity(game) {
   if (!loaded) return null;
   return JSON.parse(loaded.globals.get("capacity_lines")(JSON.stringify(game)));
+}
+
+/**
+ * The desktop's report on the Responses text: one mark per line and an
+ * explanation of what the text engine does differently. Null until loaded.
+ */
+export function responsesReport(text, game) {
+  if (!loaded) return null;
+  return JSON.parse(loaded.globals.get("responses_lines")(text, JSON.stringify(game)));
 }
 
 function copyTree(from, to, dir) {

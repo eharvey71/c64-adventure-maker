@@ -122,7 +122,22 @@
     <textarea id="messages-text" rows="14" spellcheck="false"
       aria-label="Custom messages, one KEYNAME=text per line"></textarea>
   </section>
-  <section id="tab-responses" role="tabpanel" class="later" hidden><p>Responses come in the next step.</p></section>
+  <section id="tab-responses" role="tabpanel" hidden>
+    <h2>Responses</h2>
+    <p class="hint">One per line: COMMAND:CONDITION:MESSAGE:ACTION — for example
+      TAKE KEY:AT 5:YOU PICK UP THE KEY.:SCORE 10</p>
+    <p class="hint">The left column says whether each line runs in both targets or only in the graphical build.</p>
+    <p class="capacity" data-capacity="responses"></p>
+    <p class="capacity" data-capacity="flags"></p>
+    <div class="resp-editor">
+      <div id="resp-gutter" class="resp-gutter" aria-hidden="true"></div>
+      <textarea id="resp-text" rows="18" wrap="off" spellcheck="false" autocapitalize="characters"
+        aria-label="Responses, one COMMAND:CONDITION:MESSAGE:ACTION per line"
+        aria-describedby="resp-report"></textarea>
+    </div>
+    <h3>What the text engine does differently</h3>
+    <div id="resp-report" class="resp-report" aria-live="polite"></div>
+  </section>
   <section id="tab-player" role="tabpanel" class="later" hidden><p>The Player comes in a later step.</p></section>
 </main>
 
