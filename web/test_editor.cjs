@@ -38,6 +38,9 @@ function check(ok, what, detail = "") {
   console.log(`${ok ? "ok  " : "FAIL"}  ${what}${ok || !detail ? "" : `  (${detail})`}`);
   if (!ok) failures++;
 }
+// Opening a file is asynchronous: wait for the page to finish, or give up.
+const settled = (promise) => promise.then(() => true, () => false);
+
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 async function downloadFrom(page, buttonId) {
@@ -71,6 +74,8 @@ async function main() {
 
     stage("opening the game file");
     await page.setInputFiles("#file-input", game);
+    await settled(page.waitForFunction(
+      (n) => document.querySelectorAll("#room-list li").length === n, roomCount, { timeout: 10000 }));
     const items = page.locator("#room-list li");
     check(await items.count() === roomCount, `the room list shows all ${roomCount} rooms`);
     check(await items.first().textContent() === `1: ${source.rooms["1"].name}`,
@@ -196,7 +201,8 @@ async function main() {
     const bad = path.join(require("os").tmpdir(), "not-a-game.json");
     fs.writeFileSync(bad, "[1, 2, 3]");
     await page.setInputFiles("#file-input", bad);
-    check((await page.getAttribute("#result", "data-kind")) === "error", "a bad file is reported, not opened");
+    check(await settled(page.waitForSelector('#result[data-kind="error"]', { timeout: 10000 })),
+          "a bad file is reported, not opened");
     check(await items.count() === roomCount + 1, "and the current game is kept");
     return failures ? 1 : 0;
   } finally {
