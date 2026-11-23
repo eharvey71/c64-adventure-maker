@@ -155,6 +155,24 @@ jobs:
           emcc --version | head -1
           bash web/build.sh
 
+      # Fast check without a browser: build the compiler for Node and
+      # compare every file it writes with the native compiler's.
+      - name: The WebAssembly compiler matches the native one
+        timeout-minutes: 5
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          bash web/check_compiler.sh
+
+      # Only when that fails: which compiler settings do work.
+      - name: Diagnose with other compiler settings
+        if: failure()
+        timeout-minutes: 10
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          for opt in "-O0" "-O1" "-O2 -fwrapv -fno-strict-aliasing" "-O2 -fno-delete-null-pointer-checks"; do
+            OPT="$opt" bash web/check_compiler.sh || true
+          done
+
       - name: Install Chromium for the test
         working-directory: web
         run: |
