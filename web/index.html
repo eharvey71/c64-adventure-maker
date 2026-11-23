@@ -17,7 +17,7 @@
 <script src="pyodide/pyodide.js"></script>
 <script src="compiler/compiler.js"></script>
 <script>
-const log = (m) => { document.getElementById("log").textContent += m + "\n"; };
+const log = (m) => { document.getElementById("log").textContent += m + "\n"; console.log("[page] " + m); };
 async function bytes(url) { return new Uint8Array(await (await fetch(url)).arrayBuffer()); }
 
 (async () => {
@@ -36,6 +36,7 @@ async function bytes(url) { return new Uint8Array(await (await fetch(url)).array
   // with its own in-memory file system. The project folder is copied in,
   // compiled, and everything the compiler wrote is copied back.
   const output = [];
+  log("files loaded; starting the compiler");
   const C = await createCompiler({ print: (l) => output.push(l), printErr: (l) => output.push(l) });
   const copyTree = (from, to, dir) => {
     to.mkdirTree(dir);
@@ -55,6 +56,7 @@ async function bytes(url) { return new Uint8Array(await (await fetch(url)).array
     return output.join("\n");
   };
 
+  log("compiler ready; building");
   // Both builds, through the editor's shared functions.
   const out = py.runPython(`
 import hashlib, json, sys

@@ -27,24 +27,31 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
+const t0 = Date.now();
+const stage = (m) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}`);
+
 async function main() {
   fs.copyFileSync(game, path.join(DIST, "test_game.json"));
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
   let browser;
   try {
+    // The desktop editor's disks first, so a problem there can't be
+    // mistaken for one in the browser.
+    stage("building the desktop reference disks");
+    const python = process.env.PYTHON || "python3";
+    const want = JSON.parse(execFileSync(python, [path.join(WEB, "reference.py"), game],
+                                         { timeout: 120000, stdio: ["ignore", "pipe", "inherit"] }).toString());
+    stage("starting Chromium");
     browser = await chromium.launch();
     const page = await browser.newPage();
     page.on("pageerror", (e) => console.error("page error:", e.message));
-    page.on("console", (m) => { if (m.type() === "error") console.error("console:", m.text()); });
+    page.on("console", (m) => stage((m.type() === "error" ? "console error: " : "") + m.text()));
+    stage("loading the page");
     await page.goto(`http://127.0.0.1:${port}/index.html?game=test_game.json`);
     await page.waitForFunction(() => window.result, null, { timeout: 180000 });
     const got = await page.evaluate(() => window.result);
     if (got.error) throw new Error("in the page: " + got.error);
-
-    const python = process.env.PYTHON || "python3";
-    const want = JSON.parse(execFileSync(python, [path.join(WEB, "reference.py"), game],
-                                         { timeout: 300000 }).toString());
 
     console.log(`Chromium ${browser.version()}, in-browser build took ${got.seconds}s`);
     let ok = true;

@@ -161,6 +161,10 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright
           npx playwright install --with-deps chromium
 
+      - name: The desktop editor's disks, for comparison
+        timeout-minutes: 3
+        run: python web/reference.py
+
       - name: The sample castle builds identically in the browser
         timeout-minutes: 5
         run: node web/test_browser.cjs
