@@ -1,3 +1,22 @@
+# The web version
+
+Two pages, built into `web/dist/` by `build.sh`:
+
+- **`editor.html`, the web editor (in progress).** It opens and saves the
+  same `.json` files as the desktop editor and builds both disks with the
+  same Python, so the disks are byte-identical. Work is kept in the browser
+  as you go; Save downloads the `.json`. Done so far: the game settings, the
+  Rooms screen, and both disk builds. The other screens follow one at a
+  time. `test_editor.cjs` drives it in Chromium: open a game, build both
+  disks and compare them with the desktop's, edit, reload, save.
+- **`index.html`, the build proof** described below.
+
+To try the editor locally after `bash web/build.sh`:
+
+```bash
+python3 -m http.server -d web/dist 8000   # then open http://localhost:8000/editor.html
+```
+
 # Browser build proof
 
 Evidence that the editor's builds can run entirely in a web browser, with no

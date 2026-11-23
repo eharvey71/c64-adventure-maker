@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C64 Adventure Maker</title>
+<link rel="stylesheet" href="editor/editor.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>C64 Adventure Maker</h1>
+  <div class="file-actions">
+    <button type="button" id="file-new">New</button>
+    <button type="button" id="file-open">Open…</button>
+    <button type="button" id="file-save">Save</button>
+    <input type="file" id="file-input" accept=".json,application/json" hidden>
+    <span id="saved-note" class="hint" aria-live="polite"></span>
+  </div>
+  <div class="build-actions">
+    <button type="button" id="build-text" class="primary">Build text disk</button>
+    <button type="button" id="build-graphical" class="primary">Build graphical disk</button>
+    <span id="python-status" class="hint" aria-live="polite"></span>
+  </div>
+</header>
+
+<section class="settings" aria-label="Game settings">
+  <label>Title <input id="setting-title" type="text" size="24"></label>
+  <label>Author <input id="setting-author" type="text" size="18"></label>
+  <label>Start room <input id="setting-startroom" type="text" inputmode="numeric" size="4"></label>
+  <label>Max score <input id="setting-maxscore" type="text" inputmode="numeric" size="5"></label>
+  <label class="wide">Win message <input id="setting-winmessage" type="text"
+    placeholder="Shown when a response carries the WIN action"></label>
+</section>
+
+<div id="result" class="result" role="status" hidden></div>
+
+<nav class="tabs" role="tablist" aria-label="Editor sections">
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-map">Map</button>
+  <button type="button" role="tab" aria-selected="true" aria-controls="tab-rooms">Rooms</button>
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-scenes">Scenes</button>
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-objects">Objects</button>
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-vocabulary">Vocabulary</button>
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-messages">Messages</button>
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-responses">Responses</button>
+  <button type="button" role="tab" aria-selected="false" aria-controls="tab-player">Player</button>
+</nav>
+
+<main>
+  <section id="tab-rooms" role="tabpanel" class="split">
+    <div class="list-pane">
+      <div class="pane-head">
+        <h2>Rooms</h2>
+        <span id="room-count" class="hint"></span>
+      </div>
+      <ul id="room-list" class="item-list" role="listbox" aria-label="Rooms" tabindex="0"></ul>
+      <div class="list-actions">
+        <button type="button" id="room-add">+ New</button>
+        <button type="button" id="room-delete">− Delete</button>
+      </div>
+    </div>
+    <div class="detail-pane">
+      <p id="room-empty" class="hint">Pick a room on the left, or add one.</p>
+      <form id="room-details" onsubmit="return false" hidden>
+        <h2>Room <span id="room-id"></span></h2>
+        <label class="field">Name <input id="room-name" type="text"></label>
+        <label class="field">Description
+          <textarea id="room-description" rows="6"></textarea></label>
+        <fieldset class="exits">
+          <legend>Exits — the room each direction leads to (0 = none)</legend>
+          <label>N <input id="room-exit-N" type="text" inputmode="numeric" size="3"></label>
+          <label>S <input id="room-exit-S" type="text" inputmode="numeric" size="3"></label>
+          <label>E <input id="room-exit-E" type="text" inputmode="numeric" size="3"></label>
+          <label>W <input id="room-exit-W" type="text" inputmode="numeric" size="3"></label>
+        </fieldset>
+      </form>
+    </div>
+  </section>
+
+  <section id="tab-map" role="tabpanel" class="later" hidden><p>The map comes in a later step.</p></section>
+  <section id="tab-scenes" role="tabpanel" class="later" hidden><p>Scenes come in a later step.</p></section>
+  <section id="tab-objects" role="tabpanel" class="later" hidden><p>Objects come in the next step.</p></section>
+  <section id="tab-vocabulary" role="tabpanel" class="later" hidden><p>Vocabulary comes in the next step.</p></section>
+  <section id="tab-messages" role="tabpanel" class="later" hidden><p>Messages come in the next step.</p></section>
+  <section id="tab-responses" role="tabpanel" class="later" hidden><p>Responses come in a later step.</p></section>
+  <section id="tab-player" role="tabpanel" class="later" hidden><p>The Player comes in a later step.</p></section>
+</main>
+
+<script src="pyodide/pyodide.js"></script>
+<script src="compiler/compiler.js"></script>
+<script type="module" src="editor/app.js"></script>
+</body>
+</html>

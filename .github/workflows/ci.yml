@@ -195,3 +195,9 @@ jobs:
         run: |
           python web/art_game.py "$RUNNER_TEMP/art_castle.json"
           node web/test_browser.cjs "$RUNNER_TEMP/art_castle.json"
+
+      # The web editor, driven like a person would: open, build both disks
+      # (byte-identical to the desktop's), edit, reload, save.
+      - name: The web editor works end to end
+        timeout-minutes: 5
+        run: node web/test_editor.cjs

@@ -50,6 +50,8 @@ cp "$REPO/engine/font.png" "$REPO/engine/stdlib.hjt" \
    "$REPO/engine/storytllr64.prg" "$DIST/repo/engine/"
 cp "$REPO/legacy/advplay-c64-current.bas" "$DIST/repo/legacy/"
 cp "$REPO/example_castle.json" "$DIST/"
-cp "$WEB/index.html" "$DIST/"
+cp "$WEB/index.html" "$WEB/editor.html" "$DIST/"
+mkdir -p "$DIST/editor"
+cp "$WEB/editor/"*.js "$WEB/editor/"*.css "$DIST/editor/"
 
 echo "Built $DIST"

@@ -1,0 +1,176 @@
+/* The desktop editor's palette (adventure_editor_v7.py, AdventureEditor). */
+:root {
+  color-scheme: dark;
+  --bg-dark: #1c1c1e;
+  --bg-mid: #242428;
+  --bg-light: #2a2a2e;
+  --fg: #d4d0c8;
+  --hint: #df932f;
+  --accent: #c8c4bc;
+  --teal: #4ec9b0;
+  --tab: #12a3a3;
+  --tab-active: #1acde4;
+  --select: #3d3650;
+  --border: #7a7a85;
+  --ok: #7ec8a0;
+  --error: #f0883e;
+  --hover: #3a3a40;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg-dark);
+  color: var(--fg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1 { font-size: 1.1rem; margin: 0; color: var(--accent); white-space: nowrap; }
+h2 { font-size: 1rem; margin: 0 0 .6rem; color: var(--accent); }
+.hint { color: var(--hint); font-size: .85rem; }
+
+button, input, textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+input, textarea { padding: .35rem .45rem; }
+textarea { resize: vertical; width: 100%; line-height: 1.4; }
+input:focus-visible, textarea:focus-visible, button:focus-visible,
+[role="listbox"]:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+button {
+  padding: .35rem .8rem;
+  cursor: pointer;
+  background: var(--bg-mid);
+}
+button:hover:not(:disabled) { background: var(--hover); color: #e8a050; }
+button:disabled { opacity: .55; cursor: progress; }
+button.primary { border-color: var(--teal); }
+
+/* -- top bar -- */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem 1.2rem;
+  padding: .6rem 1rem;
+  background: var(--bg-mid);
+  border-bottom: 1px solid #333338;
+}
+.file-actions, .build-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.build-actions { margin-left: auto; }
+
+/* -- settings -- */
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding: .6rem 1rem;
+  border-bottom: 1px solid #333338;
+}
+.settings label { display: flex; align-items: center; gap: .4rem; color: var(--hint); font-size: .9rem; }
+.settings label.wide { flex: 1 1 22rem; }
+.settings label.wide input { flex: 1; min-width: 0; }
+.settings input { color: var(--fg); }
+
+/* -- build results -- */
+.result {
+  margin: .6rem 1rem 0;
+  padding: .5rem .8rem;
+  border-left: 4px solid var(--border);
+  background: var(--bg-mid);
+  border-radius: 4px;
+}
+.result p { margin: 0; }
+.result ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+.result li { margin: .15rem 0; white-space: pre-wrap; }
+.result[data-kind="ok"] { border-left-color: var(--ok); }
+.result[data-kind="error"] { border-left-color: var(--error); }
+
+/* -- tabs -- */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .2rem;
+  padding: .6rem 1rem 0;
+  border-bottom: 1px solid #333338;
+}
+.tabs [role="tab"] {
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: transparent;
+  color: var(--tab);
+}
+.tabs [role="tab"][aria-selected="true"] {
+  background: var(--bg-mid);
+  border-color: #333338;
+  color: var(--tab-active);
+}
+
+main { flex: 1; padding: 1rem; }
+.later p { color: var(--hint); }
+
+/* -- list + details layout -- */
+.split {
+  display: grid;
+  grid-template-columns: minmax(14rem, 22rem) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+.list-pane, .detail-pane {
+  background: var(--bg-mid);
+  border-radius: 6px;
+  padding: .8rem;
+}
+.pane-head { display: flex; align-items: baseline; justify-content: space-between; }
+.item-list {
+  list-style: none;
+  margin: 0 0 .6rem;
+  padding: .2rem;
+  background: #252530;
+  border: 1px solid #333338;
+  border-radius: 4px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.item-list li {
+  padding: .3rem .5rem;
+  border-radius: 3px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.item-list li:hover { background: var(--hover); }
+.item-list li[aria-selected="true"] { background: var(--select); color: #fff; }
+.list-actions { display: flex; gap: .4rem; }
+
+.field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; color: var(--hint); font-size: .9rem; }
+.field input, .field textarea { color: var(--fg); font-size: 1rem; }
+
+.exits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem 1rem;
+  border: 1px solid #333338;
+  border-radius: 4px;
+  padding: .6rem .8rem;
+}
+.exits legend { color: var(--hint); font-size: .85rem; padding: 0 .3rem; }
+.exits label { display: flex; align-items: center; gap: .35rem; }
+
+@media (max-width: 720px) {
+  .split { grid-template-columns: 1fr; }
+  .build-actions { margin-left: 0; }
+  .item-list { max-height: 35vh; }
+}
