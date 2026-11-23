@@ -26,7 +26,11 @@ emcc "${FLAGS[@]}" -Dmain=storytllr_main -c "$SRC/compiler/main.c" -o "$OBJ/main
 emcc "${FLAGS[@]}" -c "$SRC/compiler/image_en.c" -o "$OBJ/image_en.o"
 emcc -O2 -w -c "$REPO/tools/imageshow_stub.c" -o "$OBJ/stub.o"
 emcc -O2 -c "$WEB/wasm_entry.c" -o "$OBJ/entry.o"
-emcc -O2 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_NAME=createCompiler \
+# StoryTllr's compiler keeps large buffers on the stack. Emscripten's
+# default stack is 64 KB in current versions (it was 5 MB in old ones), and
+# overflowing it corrupts memory: the compiler hung. 8 MB is ample.
+# TOTAL_STACK is the older spelling of STACK_SIZE, and both versions accept it.
+emcc -O2 -sALLOW_MEMORY_GROWTH=1 -sTOTAL_STACK=8MB -sMODULARIZE=1 -sEXPORT_NAME=createCompiler \
      -sENVIRONMENT=web -sFORCE_FILESYSTEM=1 \
      "-sINCOMING_MODULE_JS_API=['print','printErr']" \
      -sEXPORTED_FUNCTIONS=_compile_game -sEXPORTED_RUNTIME_METHODS=ccall,FS \

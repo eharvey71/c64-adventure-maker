@@ -43,6 +43,13 @@ To look at it yourself, serve `web/dist/` with any static file server (for
 example `python3 -m http.server -d web/dist`) and open `index.html`; the
 page prints both disk hashes when it finishes.
 
+To check just the compiler, without a browser (it builds a Node version
+and compares every file it writes with the native compiler's):
+
+```bash
+bash web/check_compiler.sh [game.json]
+```
+
 ## How the compiler is built
 
 `build.sh` uses the same flags as `tools/build_compiler.sh`, plus:
@@ -55,12 +62,12 @@ page prints both disk hashes when it finishes.
 
 ## Caveats
 
-- **Toolchain.** The proof was built with Ubuntu's Emscripten 3.1.6, which
-  pairs an old Emscripten with Clang 15; its linker didn't recognise Clang's
-  renamed `main` and silently dropped the whole compiler. The named entry
-  point above avoids that. A current Emscripten (e.g. `brew install
-  emscripten`) should work as well but hasn't been verified yet: run the
-  test above to check.
+- **Toolchain.** CI builds with Emscripten 7.0.1 (pinned in
+  `.github/workflows/ci.yml`); the first proof used Ubuntu's 3.1.6. Two
+  things matter with any version: the named entry point above (3.1.6's
+  linker otherwise dropped the whole compiler), and an 8 MB stack. Current
+  Emscripten gives programs a 64 KB stack, StoryTllr's compiler overflows
+  it, and the result was a silent hang.
 - **Download size.** Pyodide is about 14 MB on the first visit; browsers
   cache it after that.
 - **Browsers.** Tested in Chromium only, not Safari or Firefox.

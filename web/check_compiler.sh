@@ -14,12 +14,16 @@ OPT="${OPT:--O2}"
 WORK="$(mktemp -d)"
 cd "$REPO"
 
+# StoryTllr's compiler keeps large buffers on the stack. Emscripten's
+# default stack is 64 KB in current versions (it was 5 MB in old ones), and
+# overflowing it corrupts memory: the compiler hung. 8 MB is ample.
+# TOTAL_STACK is the older spelling of STACK_SIZE, and both versions accept it.
 # shellcheck disable=SC2086  # OPT is a list of flags
 emcc $OPT -w -Wno-error=incompatible-pointer-types -I"$REPO/tools" \
      -include "$REPO/tools/windows.h" -Dmain=storytllr_main \
      "$SRC/compiler/main.c" "$SRC/compiler/image_en.c" \
      "$REPO/tools/imageshow_stub.c" "$WEB/wasm_entry.c" \
-     -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 \
+     -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sTOTAL_STACK=8MB -sMODULARIZE=1 \
      "-sINCOMING_MODULE_JS_API=['wasmBinary']" \
      -sEXPORTED_FUNCTIONS=_compile_game -sEXPORTED_RUNTIME_METHODS=ccall \
      -o "$WORK/compiler.js" -lm
