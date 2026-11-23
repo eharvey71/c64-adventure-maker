@@ -1,7 +1,7 @@
 // The web editor's screens. The game is the same JSON the desktop editor
 // opens and saves; every build goes through the desktop's Python (python.js).
 
-import { startPython, buildText, buildGraphical } from "./python.js";
+import { startPython, buildText, buildGraphical, capacity } from "./python.js";
 
 const STORAGE_KEY = "c64-adventure-maker:game";
 const DIRECTIONS = ["N", "S", "E", "W"];
@@ -18,6 +18,7 @@ const newGame = () => ({
 
 let game = newGame();
 let selectedRoom = null;
+let selectedObject = null;
 const $ = (id) => document.getElementById(id);
 
 // ------------------------------------------------------------------ data --
@@ -43,6 +44,14 @@ function normalise(data) {
     if (room.description === undefined) room.description = "";
     if (room.scene_id === undefined) room.scene_id = null;
   }
+  for (const [id, obj] of Object.entries(g.objects)) {
+    if (!obj || typeof obj !== "object") g.objects[id] = {};
+    const o = g.objects[id];
+    if (o.name === undefined) o.name = id;
+    if (o.start_room === undefined) o.start_room = 1;
+    if (o.description === undefined) o.description = "";
+    if (o.properties === undefined) o.properties = "";
+  }
   return g;
 }
 
@@ -52,6 +61,11 @@ function roomIds() {
     const na = Number.isInteger(+a) ? +a : 999, nb = Number.isInteger(+b) ? +b : 999;
     return na - nb || a.localeCompare(b);
   });
+}
+
+/** Object IDs in the desktop's order: alphabetical. */
+function objectIds() {
+  return Object.keys(game.objects).sort();
 }
 
 /** A whole number from a text field, or `fallback` while it's mid-edit. */
@@ -78,6 +92,7 @@ function saveLocally() {
 
 let saveTimer = null;
 function changed() {
+  refreshCapacity();
   $("saved-note").textContent = "Saving…";
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveLocally, 300);
@@ -100,6 +115,28 @@ function download(name, bytes, type) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** The desktop's counters against the text engine's limits. */
+function refreshCapacity() {
+  const counts = capacity(game);
+  for (const el of document.querySelectorAll("[data-capacity]")) {
+    const c = counts && counts[el.dataset.capacity];
+    el.textContent = c ? c.text : "";
+    el.dataset.over = String(Boolean(c && c.over));
+  }
+}
+
+/** Up and down move through a list, as in a desktop list box. */
+function wireListKeys(listId, ids, current, select) {
+  $(listId).addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const all = ids();
+    const at = all.indexOf(current());
+    const next = all[Math.min(all.length - 1, Math.max(0, at + (e.key === "ArrowDown" ? 1 : -1)))];
+    if (next) select(next);
+  });
 }
 
 // -------------------------------------------------------------- settings --
@@ -143,13 +180,16 @@ function renderRoomList() {
     li.addEventListener("click", () => selectRoom(id));
     list.append(li);
   }
-  $("room-count").textContent = `${roomIds().length} rooms`;
 }
 
 function selectRoom(id) {
   selectedRoom = id in game.rooms ? id : null;
   renderRoomList();
   renderRoomDetails();
+  renderObjectList();
+  renderObjectDetails();
+  renderTextPanels();
+  refreshCapacity();
 }
 
 function renderRoomDetails() {
@@ -195,14 +235,155 @@ function wireRooms() {
     changed();
     selectRoom(null);
   });
-  // Up and down move through the list, as in a desktop list box.
-  $("room-list").addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const ids = roomIds();
-    const at = ids.indexOf(selectedRoom);
-    const next = ids[Math.min(ids.length - 1, Math.max(0, at + (e.key === "ArrowDown" ? 1 : -1)))];
-    if (next) selectRoom(next);
+  wireListKeys("room-list", roomIds, () => selectedRoom, selectRoom);
+}
+
+// --------------------------------------------------------------- objects --
+
+function renderObjectList() {
+  const list = $("object-list");
+  list.replaceChildren();
+  for (const id of objectIds()) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.dataset.id = id;
+    li.textContent = `${id}: ${game.objects[id].name}`;
+    li.setAttribute("aria-selected", String(id === selectedObject));
+    li.addEventListener("click", () => selectObject(id));
+    list.append(li);
+  }
+}
+
+function selectObject(id) {
+  selectedObject = id in game.objects ? id : null;
+  renderObjectList();
+  renderObjectDetails();
+}
+
+function objectNote(text) {
+  $("object-id-note").textContent = text;
+  $("object-id-note").hidden = !text;
+}
+
+function renderObjectDetails() {
+  const obj = selectedObject && game.objects[selectedObject];
+  $("object-details").hidden = !obj;
+  $("object-empty").hidden = Boolean(obj);
+  objectNote("");
+  if (!obj) return;
+  $("object-id").value = selectedObject;
+  $("object-name").value = obj.name;
+  $("object-room").value = obj.start_room;
+  $("object-description").value = obj.description;
+  $("object-properties").value = obj.properties;
+}
+
+/** How many responses mention `word` as a whole word. */
+function responsesUsing(word) {
+  const re = new RegExp(`(^|[^A-Z0-9_])${word}([^A-Z0-9_]|$)`, "i");
+  return game.responses.filter((r) =>
+    ["command", "condition", "action"].some((k) => re.test(String(r[k] ?? "")))).length;
+}
+
+/** Rename an object, keeping its place in the file. Returns an error or "". */
+function renameObject(from, to) {
+  if (!/^[A-Z0-9_]+$/.test(to)) return "An ID is one word: letters, digits or _.";
+  if (to !== from && to in game.objects) return `There is already an object called ${to}.`;
+  game.objects = Object.fromEntries(Object.entries(game.objects)
+    .map(([k, v]) => [k === from ? to : k, v]));
+  return "";
+}
+
+function wireObjects() {
+  $("object-id").addEventListener("change", (e) => {
+    const from = selectedObject;
+    const to = e.target.value.trim().toUpperCase();
+    if (to === from) { e.target.value = from; return; }
+    const error = renameObject(from, to);
+    if (error) {
+      e.target.value = from;
+      objectNote(error);
+      return;
+    }
+    changed();
+    selectObject(to);
+    const n = responsesUsing(from);
+    if (n) objectNote(`${n} response${n > 1 ? "s" : ""} still say${n > 1 ? "" : "s"} ${from}. Change them in Responses.`);
+  });
+  const field = (id, key, read = (v) => v) => {
+    $(id).addEventListener("input", (e) => {
+      const obj = game.objects[selectedObject];
+      obj[key] = read(e.target.value, obj[key]);
+      if (key === "name") {
+        const li = $("object-list").querySelector(`[data-id="${CSS.escape(selectedObject)}"]`);
+        if (li) li.textContent = `${selectedObject}: ${obj.name}`;
+      }
+      changed();
+    });
+  };
+  field("object-name", "name");
+  field("object-room", "start_room", (v, old) => Math.max(0, intField(v, old)));
+  field("object-description", "description", (v) => v.trim());
+  field("object-properties", "properties");
+  $("object-add").addEventListener("click", () => {
+    let n = Object.keys(game.objects).length + 1;
+    while (`OBJ${n}` in game.objects) n++;
+    const id = `OBJ${n}`;
+    game.objects[id] = { name: `Object ${id}`, start_room: 1, description: "", properties: "" };
+    changed();
+    selectObject(id);
+    $("object-id").focus();
+    $("object-id").select();
+  });
+  $("object-delete").addEventListener("click", () => {
+    if (!selectedObject || !confirm(`Delete ${selectedObject}?`)) return;
+    delete game.objects[selectedObject];
+    changed();
+    selectObject(null);
+  });
+  wireListKeys("object-list", objectIds, () => selectedObject, selectObject);
+}
+
+// ----------------------------------------------------- vocabulary/messages --
+// Plain text, one entry per line, read exactly as the desktop reads it.
+
+function parseVocabulary(text) {
+  const vocab = {};
+  for (const line of text.trim().split("\n")) {
+    const parts = line.split("=");
+    if (parts.length !== 2) continue;
+    vocab[parts[0].trim()] = parts[1].split(",").map((w) => w.trim());
+  }
+  return vocab;
+}
+
+function parseMessages(text) {
+  const msgs = {};
+  for (const line of text.trim().split("\n")) {
+    const at = line.indexOf("=");
+    if (at < 0) continue;
+    const key = line.slice(0, at).trim().toUpperCase();
+    const value = line.slice(at + 1).trim();
+    if (key && value) msgs[key] = value;
+  }
+  return msgs;
+}
+
+function renderTextPanels() {
+  $("vocab-text").value = Object.entries(game.vocabulary)
+    .map(([w, syns]) => `${w}=${syns.join(",")}\n`).join("");
+  $("messages-text").value = Object.entries(game.messages)
+    .map(([k, v]) => `${k}=${v}`).join("\n");
+}
+
+function wireTextPanels() {
+  $("vocab-text").addEventListener("input", (e) => {
+    game.vocabulary = parseVocabulary(e.target.value);
+    changed();
+  });
+  $("messages-text").addEventListener("input", (e) => {
+    game.messages = parseMessages(e.target.value);
+    changed();
   });
 }
 
@@ -226,6 +407,7 @@ function wireTabs() {
 function loadGame(data, source) {
   game = normalise(data);
   selectedRoom = roomIds()[0] ?? null;
+  selectedObject = objectIds()[0] ?? null;
   renderAll();
   saveLocally();
   showResult("info", `Opened ${source}.`);
@@ -310,15 +492,18 @@ function renderAll() {
 function start() {
   wireSettings();
   wireRooms();
+  wireObjects();
+  wireTextPanels();
   wireTabs();
   wireFiles();
   wireBuilds();
   game = restore() ?? newGame();
   selectedRoom = roomIds()[0] ?? null;
+  selectedObject = objectIds()[0] ?? null;
   renderAll();
   // Python loads in the background, so the first build doesn't wait for it.
   startPython((msg) => { $("python-status").textContent = msg; })
-    .then(() => { document.body.dataset.python = "ready"; })
+    .then(() => { refreshCapacity(); document.body.dataset.python = "ready"; })
     .catch((e) => { $("python-status").textContent = `Python didn't load: ${e.message}`; });
 }
 

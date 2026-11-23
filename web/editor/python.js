@@ -13,6 +13,7 @@ const REPO_FILES = [
 ];
 
 let ready = null;
+let loaded = null;   // the Python instance, once it has finished loading
 let buildCount = 0;
 
 /** Load Python once; later calls return the same promise. */
@@ -41,9 +42,24 @@ import adventure_editor_v7 as ed
 import c64build
 ENGINE = Path("/repo/engine")
 RUNTIME = Path("/repo/legacy/advplay-c64-current.bas")
+
+def capacity_lines(game_json):
+    game = json.loads(game_json)
+    return json.dumps({k: {"text": ed.capacity_text(k, n, limit), "over": n > limit}
+                       for k, (n, limit) in ed.basic_capacity(game).items()})
 `);
   onStatus("");
+  loaded = py;
   return py;
+}
+
+/**
+ * The desktop's counters against the text engine's limits, keyed as in
+ * BASIC_LIMITS: {rooms: {text, over}, ...}. Null until Python has loaded.
+ */
+export function capacity(game) {
+  if (!loaded) return null;
+  return JSON.parse(loaded.globals.get("capacity_lines")(JSON.stringify(game)));
 }
 
 function copyTree(from, to, dir) {

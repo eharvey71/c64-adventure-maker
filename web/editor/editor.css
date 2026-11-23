@@ -20,6 +20,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -134,7 +135,6 @@ main { flex: 1; padding: 1rem; }
   border-radius: 6px;
   padding: .8rem;
 }
-.pane-head { display: flex; align-items: baseline; justify-content: space-between; }
 .item-list {
   list-style: none;
   margin: 0 0 .6rem;
@@ -154,6 +154,14 @@ main { flex: 1; padding: 1rem; }
 .item-list li:hover { background: var(--hover); }
 .item-list li[aria-selected="true"] { background: var(--select); color: #fff; }
 .list-actions { display: flex; gap: .4rem; }
+
+.capacity { margin: 0 0 .3rem; color: var(--hint); font-size: .85rem; }
+.capacity:empty { display: none; }
+.capacity[data-over="true"] { color: #ff7b72; font-weight: 600; }
+.note { margin: -.4rem 0 .8rem; color: var(--error); font-size: .9rem; }
+
+.text-panel { max-width: 60rem; }
+.text-panel textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .95rem; }
 
 .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .8rem; color: var(--hint); font-size: .9rem; }
 .field input, .field textarea { color: var(--fg); font-size: 1rem; }

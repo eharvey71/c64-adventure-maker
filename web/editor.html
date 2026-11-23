@@ -48,10 +48,8 @@
 <main>
   <section id="tab-rooms" role="tabpanel" class="split">
     <div class="list-pane">
-      <div class="pane-head">
-        <h2>Rooms</h2>
-        <span id="room-count" class="hint"></span>
-      </div>
+      <h2>Rooms</h2>
+      <p class="capacity" data-capacity="rooms"></p>
       <ul id="room-list" class="item-list" role="listbox" aria-label="Rooms" tabindex="0"></ul>
       <div class="list-actions">
         <button type="button" id="room-add">+ New</button>
@@ -78,10 +76,53 @@
 
   <section id="tab-map" role="tabpanel" class="later" hidden><p>The map comes in a later step.</p></section>
   <section id="tab-scenes" role="tabpanel" class="later" hidden><p>Scenes come in a later step.</p></section>
-  <section id="tab-objects" role="tabpanel" class="later" hidden><p>Objects come in the next step.</p></section>
-  <section id="tab-vocabulary" role="tabpanel" class="later" hidden><p>Vocabulary comes in the next step.</p></section>
-  <section id="tab-messages" role="tabpanel" class="later" hidden><p>Messages come in the next step.</p></section>
-  <section id="tab-responses" role="tabpanel" class="later" hidden><p>Responses come in a later step.</p></section>
+  <section id="tab-objects" role="tabpanel" class="split" hidden>
+    <div class="list-pane">
+      <h2>Objects</h2>
+      <p class="capacity" data-capacity="objects"></p>
+      <p class="capacity" data-capacity="carried"></p>
+      <ul id="object-list" class="item-list" role="listbox" aria-label="Objects" tabindex="0"></ul>
+      <div class="list-actions">
+        <button type="button" id="object-add">+ New</button>
+        <button type="button" id="object-delete">− Delete</button>
+      </div>
+    </div>
+    <div class="detail-pane">
+      <p id="object-empty" class="hint">Pick an object on the left, or add one.</p>
+      <form id="object-details" onsubmit="return false" hidden>
+        <h2>Object details</h2>
+        <label class="field">ID — the word players type, and responses use
+          <input id="object-id" type="text" autocapitalize="characters" spellcheck="false"></label>
+        <p id="object-id-note" class="note" role="alert" hidden></p>
+        <label class="field">Name <input id="object-name" type="text"></label>
+        <label class="field">Start room <input id="object-room" type="text" inputmode="numeric" size="4"></label>
+        <label class="field">Description
+          <textarea id="object-description" rows="4"></textarea></label>
+        <label class="field">Properties
+          <input id="object-properties" type="text" autocapitalize="characters" spellcheck="false"></label>
+        <p class="hint">TAKEABLE: can be picked up. HIDDEN: not listed in the room.
+          FIXED: stays put. Separate several with commas.</p>
+      </form>
+    </div>
+  </section>
+
+  <section id="tab-vocabulary" role="tabpanel" class="text-panel" hidden>
+    <h2>Vocabulary</h2>
+    <p class="hint">One word per line: WORD=SYNONYM,SYNONYM — for example EXAMINE=X,INSPECT,SEARCH</p>
+    <p class="capacity" data-capacity="vocabulary"></p>
+    <textarea id="vocab-text" rows="18" spellcheck="false" autocapitalize="characters"
+      aria-label="Vocabulary, one WORD=SYNONYM,SYNONYM per line"></textarea>
+  </section>
+
+  <section id="tab-messages" role="tabpanel" class="text-panel" hidden>
+    <h2>Custom messages</h2>
+    <p class="hint">One per line: KEYNAME=Your message text. Use one in a response with the action MSG KEYNAME.
+      They work in both targets. The win message is in the settings above.</p>
+    <p class="capacity" data-capacity="messages"></p>
+    <textarea id="messages-text" rows="14" spellcheck="false"
+      aria-label="Custom messages, one KEYNAME=text per line"></textarea>
+  </section>
+  <section id="tab-responses" role="tabpanel" class="later" hidden><p>Responses come in the next step.</p></section>
   <section id="tab-player" role="tabpanel" class="later" hidden><p>The Player comes in a later step.</p></section>
 </main>
 

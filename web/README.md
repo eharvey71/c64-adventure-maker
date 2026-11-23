@@ -6,7 +6,8 @@ Two pages, built into `web/dist/` by `build.sh`:
   same `.json` files as the desktop editor and builds both disks with the
   same Python, so the disks are byte-identical. Work is kept in the browser
   as you go; Save downloads the `.json`. Done so far: the game settings, the
-  Rooms screen, and both disk builds. The other screens follow one at a
+  Rooms, Objects, Vocabulary and Messages screens (with the desktop's
+  text-engine limit counters), and both disk builds. The other screens follow one at a
   time. `test_editor.cjs` drives it in Chromium: open a game, build both
   disks and compare them with the desktop's, edit, reload, save.
 - **`index.html`, the build proof** described below.
