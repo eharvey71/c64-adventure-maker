@@ -9,8 +9,10 @@ Export paths:
     it, and builds a ready-to-play .d64 disk image (optionally launching the
     VICE emulator). Rooms with Koala scenes attached get their artwork on
     the C64 split screen; rooms without get generated placeholder images.
-    Needs: the patched script_compiler, and VICE (c1541 + x64sc). The kit's
-    engine/ folder (storytllr64.prg, stdlib.hjt, font.png) supplies the rest.
+    Needs: the patched script_compiler. The disk image is written in pure
+    Python (c64build.py); VICE's x64sc is only used, if found, to play it.
+    The kit's engine/ folder (storytllr64.prg, stdlib.hjt, font.png)
+    supplies the rest.
   * File > Export StoryTllr Project - writes just the project folder for
     manual building (same content, no compile/disk step).
   * File > Export .adv              - text-only game for advplay-c64-v3.bas
@@ -49,7 +51,7 @@ import zlib
 from pathlib import Path
 
 
-# Directories searched for the VICE tools (c1541, x64sc) when they are not
+# Directories searched for VICE's emulator (x64sc) when it is not
 # already on PATH. `~` expands to the home directory; glob wildcards are
 # allowed, since VICE ships under version-stamped folder names.
 VICE_DIRS = [
@@ -3803,10 +3805,6 @@ class AdventureEditor:
             [self._kit_dir(), self._kit_dir() / "tools",
              "~/dev/storytllr-mac-port"])
 
-    def _find_c1541(self):
-        return self._find_tool(
-            "c1541", self._exe_names("c1541"), VICE_DIRS)
-
     def _find_x64sc(self):
         return self._find_tool(
             "x64sc", self._exe_names("x64sc"), VICE_DIRS)
@@ -3856,14 +3854,6 @@ class AdventureEditor:
             cfg = self._load_kit_config()
             cfg["script_compiler"] = compiler
             self._save_kit_config(cfg)
-        c1541 = self._find_c1541()
-        if not c1541:
-            messagebox.showerror(
-                "VICE not found",
-                "I couldn't find c1541 (part of the VICE emulator), which "
-                "is needed to build the disk image. Install VICE or use "
-                "File > Export StoryTllr Project for a manual build.")
-            return
 
         # 3. Pick where builds live (remembered between sessions).
         cfg = self._load_kit_config()
@@ -3876,11 +3866,19 @@ class AdventureEditor:
             cfg["build_dir"] = build_root
             self._save_kit_config(cfg)
 
-        self.root.after(50, lambda: self._run_build(conv, compiler, c1541,
+        self.root.after(50, lambda: self._run_build(conv, compiler,
                                                     Path(build_root)))
 
-    def _run_build(self, conv, compiler, c1541, build_root):
+    def _run_build(self, conv, compiler, build_root):
         import subprocess
+        try:
+            import c64build
+        except ImportError:
+            messagebox.showerror(
+                "c64build.py missing",
+                "The build needs c64build.py, which belongs next to "
+                "adventure_editor_v7.py. Copy it back from the repository.")
+            return
         try:
             slug = slugify(self.game.get("settings", {}).get("title", "game"))
             proj = build_root / slug
@@ -3943,33 +3941,26 @@ class AdventureEditor:
                     "storytllr64.prg wasn't found in the kit's engine/ "
                     "folder — the disk can't be built without it.")
                 return
+            # Written in pure Python (c64build), byte-identical to the
+            # c1541 calls this used to make; all files are PRGs, named in
+            # lowercase as c1541 needed them.
             disk = proj / "bin" / f"{slug}.d64"
             disk.parent.mkdir(exist_ok=True)
-            if disk.exists():
-                disk.unlink()
             label = slug[:16]
-
-            def run1541(*args):
-                rr = subprocess.run([c1541, *args], capture_output=True, text=True)
-                return rr.returncode, (rr.stdout or "") + (rr.stderr or "")
-
-            rc, out = run1541("-format", f"{label},66", "d64", str(disk))
-            if not disk.exists():
-                messagebox.showerror("Disk build failed",
-                                     f"Could not create the disk image:\n{out}")
-                return
-            writes = [(str(player), label)]
-            writes.append((str(proj / "img" / "font"), "font"))
-            writes.append((str(proj / "advcartridge"), "advcartridge"))
+            writes = [(Path(player), label)]
+            writes.append((proj / "img" / "font", "font"))
+            writes.append((proj / "advcartridge", "advcartridge"))
             for f in sorted((proj / "img").glob("room*")):
-                writes.append((str(f), f.name))
-            for src, dst in writes:
-                rc, out = run1541("-attach", str(disk), "-write", src, dst.lower())
-                if rc != 0:
-                    messagebox.showerror(
-                        "Disk build failed",
-                        f"Could not write {dst} to the disk:\n{out}")
-                    return
+                writes.append((f, f.name))
+            try:
+                image = c64build.D64(label, "66")
+                for src, dst in writes:
+                    image.add_file(dst.lower(), src.read_bytes(), "prg")
+                image.save(disk)
+            except c64build.DiskError as e:
+                messagebox.showerror("Disk build failed",
+                                     f"Could not build the disk image:\n\n{e}")
+                return
 
             # Done — offer to play.
             x64sc = self._find_x64sc()
