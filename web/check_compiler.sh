@@ -20,6 +20,7 @@ emcc $OPT -w -Wno-error=incompatible-pointer-types -I"$REPO/tools" \
      "$SRC/compiler/main.c" "$SRC/compiler/image_en.c" \
      "$REPO/tools/imageshow_stub.c" "$WEB/wasm_entry.c" \
      -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 \
+     "-sINCOMING_MODULE_JS_API=['wasmBinary']" \
      -sEXPORTED_FUNCTIONS=_compile_game -sEXPORTED_RUNTIME_METHODS=ccall \
      -o "$WORK/compiler.js" -lm
 
@@ -39,8 +40,18 @@ SCRIPT="$(head -1 "$WORK/script_names")"
 # The native compiler exits 1 on success, so judge it by what it writes.
 (cd "$WORK/native" && "$REPO/tools/script_compiler" "$SCRIPT" tmp.h advcartridge >/dev/null || true)
 [ -f "$WORK/native/advcartridge" ] || { echo "the native compiler wrote no game" >&2; exit 1; }
-timeout "${TIMEOUT:-60}" node "$WEB/run_compiler_node.cjs" "$WORK/compiler.js" "$WORK/wasm" "$SCRIPT" >/dev/null \
-  || { echo "FAIL ($OPT): the WebAssembly compiler didn't finish within ${TIMEOUT:-60}s"; exit 1; }
+status=0
+timeout "${TIMEOUT:-60}" node "$WEB/run_compiler_node.cjs" "$WORK/compiler.js" "$WORK/wasm" "$SCRIPT" \
+  > "$WORK/wasm.log" 2>&1 || status=$?
+if [ "$status" = 124 ]; then
+  echo "FAIL ($OPT): the WebAssembly compiler didn't finish within ${TIMEOUT:-60}s"
+  tail -5 "$WORK/wasm.log"
+  exit 1
+elif [ "$status" != 0 ]; then
+  echo "FAIL ($OPT): the WebAssembly compiler stopped with an error:"
+  tail -15 "$WORK/wasm.log"
+  exit 1
+fi
 
 if diff -rq "$WORK/native" "$WORK/wasm"; then
   echo "PASS ($OPT): every file matches the native compiler's"

@@ -28,6 +28,7 @@ emcc -O2 -w -c "$REPO/tools/imageshow_stub.c" -o "$OBJ/stub.o"
 emcc -O2 -c "$WEB/wasm_entry.c" -o "$OBJ/entry.o"
 emcc -O2 -sALLOW_MEMORY_GROWTH=1 -sMODULARIZE=1 -sEXPORT_NAME=createCompiler \
      -sENVIRONMENT=web -sFORCE_FILESYSTEM=1 \
+     "-sINCOMING_MODULE_JS_API=['print','printErr']" \
      -sEXPORTED_FUNCTIONS=_compile_game -sEXPORTED_RUNTIME_METHODS=ccall,FS \
      -o "$DIST/compiler/compiler.js" \
      "$OBJ/main.o" "$OBJ/image_en.o" "$OBJ/stub.o" "$OBJ/entry.o" -lm
