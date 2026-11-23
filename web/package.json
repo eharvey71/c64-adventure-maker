@@ -1,0 +1,12 @@
+{
+  "name": "c64-adventure-maker-web-proof",
+  "private": true,
+  "description": "Proof that the editor's builds run in a browser: Pyodide + StoryTllr's compiler as WebAssembly.",
+  "scripts": {
+    "build": "bash build.sh",
+    "test": "node test_browser.cjs"
+  },
+  "dependencies": {
+    "pyodide": "0.26.4"
+  }
+}

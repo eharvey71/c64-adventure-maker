@@ -21,3 +21,9 @@ tools/script_compiler
 # macOS
 .DS_Store
 tools/StoryTllrC64-src/
+
+# web/ proof: build output and npm packages
+web/dist/
+web/build/
+web/node_modules/
+web/package-lock.json

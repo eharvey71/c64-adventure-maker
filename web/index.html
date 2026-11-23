@@ -1,0 +1,97 @@
+<!doctype html>
+<!--
+  Proof that the editor's builds run entirely in a browser.
+
+  Loads Pyodide and the editor's own Python files, converts a game exactly as
+  the desktop editor's graphical build does, compiles it with StoryTllr's
+  compiler built as WebAssembly, and writes both disks with c64build. The
+  result is a pair of SHA-256 hashes in window.result, which test_browser.cjs
+  compares with the desktop editor's own disks.
+
+  The Python below repeats the editor's build steps; the real web version
+  should call shared functions instead. Pick a game with ?game=file.json.
+-->
+<meta charset="utf-8">
+<title>Browser Build Proof</title>
+<pre id="log"></pre>
+<script src="pyodide/pyodide.js"></script>
+<script src="compiler/compiler.js"></script>
+<script>
+const log = (m) => { document.getElementById("log").textContent += m + "\n"; };
+async function bytes(url) { return new Uint8Array(await (await fetch(url)).arrayBuffer()); }
+
+(async () => {
+  const t0 = performance.now();
+  const py = await loadPyodide({ indexURL: "pyodide/" });
+  log("pyodide " + py.version);
+  // the editor's own Python files, plus engine files and the game
+  for (const d of ["/repo", "/repo/engine", "/repo/legacy", "/proj"]) py.FS.mkdirTree(d);
+  for (const f of ["adventure_editor_v7.py", "c64build.py", "engine/font.png", "engine/stdlib.hjt",
+                   "engine/storytllr64.prg", "legacy/advplay-c64-current.bas"])
+    py.FS.writeFile("/repo/" + f, await bytes("repo/" + f));
+  const game = new URLSearchParams(location.search).get("game") || "example_castle.json";
+  py.FS.writeFile("/game.json", await bytes(game));
+
+  // 1. convert: the same steps as the editor's _run_build, up to the compiler
+  py.runPython(`
+import sys, json, shutil
+from pathlib import Path
+sys.path.insert(0, "/repo")
+import adventure_editor_v7 as ed
+game = json.load(open("/game.json"))
+proj = Path("/proj"); (proj / "img").mkdir(); (proj / "png").mkdir()
+shutil.copy("/repo/engine/font.png", proj / "png/font.png")
+shutil.copy("/repo/engine/stdlib.hjt", proj / "stdlib.hjt")
+conv = ed.Converter(game, crop_offset=ed.STORYTLLR_CROP_OFFSET)
+(proj / "game.hjt").write_text(conv.emit(font_path="png\\\\font.png"), encoding="utf-8")
+conv.write_room_images(proj / "png")
+`);
+  log("converted");
+
+  // 2. compile with the WebAssembly compiler, in its own in-memory file system
+  const C = await createCompiler({ print: () => {}, printErr: () => {} });
+  const copyIn = (dir) => {
+    C.FS.mkdirTree(dir);
+    for (const n of py.FS.readdir(dir)) {
+      if (n === "." || n === "..") continue;
+      const p = dir + "/" + n;
+      if (py.FS.isDir(py.FS.stat(p).mode)) copyIn(p);
+      else C.FS.writeFile(p, py.FS.readFile(p));
+    }
+  };
+  copyIn("/proj");
+  C.FS.chdir("/proj");
+  const rc = C.ccall("compile_game", "number", ["string", "string", "string"],
+                     ["game.hjt", "tmp.h", "advcartridge"]);
+  log("compile_game returned " + rc);
+  py.FS.writeFile("/proj/advcartridge", C.FS.readFile("/proj/advcartridge"));
+  for (const n of C.FS.readdir("/proj/img"))
+    if (n !== "." && n !== "..") py.FS.writeFile("/proj/img/" + n, C.FS.readFile("/proj/img/" + n));
+
+  // 3. both disks, written by c64build exactly as the editor does
+  const out = py.runPython(`
+import c64build, hashlib
+slug = ed.slugify(game["settings"]["title"]); label = slug[:16]
+g = c64build.D64(label, "66")
+g.add_file(label, Path("/repo/engine/storytllr64.prg").read_bytes(), "prg")
+g.add_file("font", (proj / "img/font").read_bytes(), "prg")
+g.add_file("advcartridge", (proj / "advcartridge").read_bytes(), "prg")
+for f in sorted((proj / "img").glob("room*")):
+    g.add_file(f.name.lower(), f.read_bytes(), "prg")
+class E:
+    _int_field = ed.AdventureEditor._int_field
+    generate_adv = ed.AdventureEditor.generate_adv
+E.game = game
+adv = b"".join(l.rstrip().encode("ascii", "replace") + b"\\r"
+               for l in E().generate_adv().split("\\n") if l.rstrip())
+t = c64build.D64(label, "01")
+t.add_file("advplay", c64build.tokenize_basic(Path("/repo/legacy/advplay-c64-current.bas").read_text()), "prg")
+t.add_file("game.adv", adv, "seq")
+json.dumps({"graphical": hashlib.sha256(g.to_bytes()).hexdigest(),
+            "text": hashlib.sha256(t.to_bytes()).hexdigest()})
+`);
+  window.result = JSON.parse(out);
+  window.result.seconds = ((performance.now() - t0) / 1000).toFixed(1);
+  log(JSON.stringify(window.result));
+})().catch((e) => { window.result = { error: String(e) }; log("ERROR " + e); });
+</script>
