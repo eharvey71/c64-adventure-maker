@@ -9,9 +9,10 @@ In headless Chromium, `index.html`:
 
 1. loads **Pyodide** (Python compiled to WebAssembly) and the editor's own
    `adventure_editor_v7.py` and `c64build.py`, unchanged;
-2. converts a game exactly as the desktop editor's graphical build does;
-3. compiles it with **StoryTllr's compiler built as WebAssembly**;
-4. writes the graphical and text `.d64` disks with `c64build`.
+2. calls the same build functions the desktop editor uses,
+   `build_graphical_disk` and `build_text_disk`;
+3. hands `build_graphical_disk` a JavaScript function as its compiler,
+   which runs **StoryTllr's compiler built as WebAssembly**.
 
 `test_browser.cjs` then compares both disks with the ones the desktop
 editor builds (`reference.py`, which runs the editor's real build
@@ -66,6 +67,3 @@ page prints both disk hashes when it finishes.
 - **One build per compiler instance.** The page creates a fresh compiler for
   each build. Several builds in one instance haven't been tested; the
   compiler keeps global state.
-- **Duplicated steps.** The Python in `index.html` repeats the editor's build
-  steps. The real web version should call shared functions moved out of
-  `AdventureEditor`, so the desktop and web builds can't drift apart.

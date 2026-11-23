@@ -37,21 +37,22 @@ class TestDiskFilenames(unittest.TestCase):
     def test_the_name_fits_a_directory_entry(self):
         self.assertLessEqual(len(self.NAME), 16)
 
-    def test_the_build_uses_it_verbatim(self):
-        import inspect
-        src = inspect.getsource(ed.AdventureEditor._run_text_build)
-        self.assertIn('adv_name = "game.adv"', src)
+    def test_the_build_uses_it(self):
+        self.assertEqual(ed.TEXT_GAME_NAME, self.NAME)
 
     def test_it_does_not_depend_on_the_title(self):
         # a long title used to produce "the_haunted_.adv", which nobody could
         # be expected to guess at the runtime's prompt. The disk label may
-        # still be cut from the slug - only the name the player types matters.
-        import inspect
-        src = inspect.getsource(ed.AdventureEditor._run_text_build)
-        for line in src.splitlines():
-            if "adv_name" in line and "=" in line and "adv_name ==" not in line:
-                self.assertNotIn("slug", line)
-        self.assertNotIn('slug[:16 - len(".adv")]', src)
+        # still be cut from the title - only the name the player types matters.
+        from test_c64build import read_directory
+        runtime = (REPO / "legacy" / ed.AdventureEditor.BASIC_RUNTIME).read_text()
+        with open(REPO / "example_castle.json") as f:
+            game = json.load(f)
+        for title in ("X", "The Haunted Castle", "A Very Long Title Indeed, Friends"):
+            game["settings"]["title"] = title
+            disk = ed.build_text_disk(game, runtime)["disk"]
+            names = [entry[0] for entry in read_directory(disk)]
+            self.assertEqual(names, [b"ADVPLAY", b"GAME.ADV"], title)
 
     def test_the_disk_label_still_carries_the_title(self):
         self.assertTrue(ed.slugify("The Haunted Castle")[:16].startswith("the_haunted"))

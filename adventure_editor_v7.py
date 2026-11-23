@@ -1640,6 +1640,185 @@ class GameEngine:
 
         return "\n".join(lines)
 
+# =============================================================================
+# Builds: plain functions shared by the desktop editor and the web version.
+#
+# They take a game (the same dict the editor saves as JSON) and return the
+# bytes of the files to write; none of them touches the GUI. The one step
+# that differs between platforms is running StoryTllr's compiler, so the
+# graphical build takes it as a function: the desktop passes one that runs
+# tools/script_compiler, the web page one that runs the WebAssembly build.
+# =============================================================================
+
+TEXT_DISK_ID = "01"
+GRAPHICAL_DISK_ID = "66"
+TEXT_PLAYER_NAME = "advplay"
+# A 1541 filename is 16 characters, and the runtime asks the player to type
+# it. A truncated title like "the_haunted_.adv" is unguessable, so the
+# one-click build - which puts one game on one disk - uses this short name.
+TEXT_GAME_NAME = "game.adv"
+
+
+class CompileError(Exception):
+    """StoryTllr's compiler rejected the game; .errors holds its ERR lines."""
+
+    def __init__(self, errors):
+        super().__init__("\n".join(errors) or "the compiler produced no game")
+        self.errors = list(errors)
+
+
+def generate_adv(game):
+    """The game as the BASIC runtime's .adv text (LF line endings)."""
+    lines = []
+
+    lines.append("[SETTINGS]")
+    for key, value in game["settings"].items():
+        lines.append(f"{key.upper()}={value}")
+
+    lines.append("[ROOMS]")
+    lines.append("# Format: ID:Name:Description:North,South,East,West:")
+    room_ids = []
+    for key in game["rooms"].keys():
+        try:
+            room_ids.append((int(key), key))
+        except (ValueError, TypeError):
+            room_ids.append((999, key))
+    room_ids.sort()
+
+    for _, room_id in room_ids:
+        room = game["rooms"][room_id]
+        exits = ",".join(map(str, room["exits"]))
+        name = room["name"].upper()
+        desc = room["description"].upper()
+        lines.append(f"{room_id}:{name}:{desc}:{exits}:")
+
+    lines.append("[OBJECTS]")
+    lines.append("# Format: ID:StartRoom:Name:Description:Properties")
+    for obj_id in sorted(game["objects"].keys()):
+        obj = game["objects"][obj_id]
+        start_room = obj["start_room"]
+        name = obj["name"].upper()
+        desc = obj["description"].upper()
+        props = obj["properties"].upper()
+        lines.append(f"{obj_id}:{start_room}:{name}:{desc}:{props}")
+
+    lines.append("[VOCABULARY]")
+    for word, synonyms in game["vocabulary"].items():
+        lines.append(f"{word.upper()}={','.join(synonyms)}")
+
+    lines.append("[MESSAGES]")
+    for key, msg in game["messages"].items():
+        lines.append(f"{key}={msg.upper()}")
+
+    lines.append("[RESPONSES]")
+    lines.append("# Format: COMMAND:CONDITION:MESSAGE:ACTION")
+    for resp in game["responses"]:
+        line = f"{resp['command']}:{resp['condition']}:{resp['message']}:{resp['action']}"
+        lines.append(line)
+
+    # The C64's default character set shows uppercase for codes 0x41-0x5A
+    # and graphics for lowercase, so mixed-case text renders as garbage.
+    # Author names in particular came through as line noise.
+    return "\n".join(lines).upper()
+
+
+def adv_bytes(game):
+    """The .adv as the runtime reads it from disk.
+
+    CR line endings, not LF: the runtime reads a character at a time and
+    ends a line on CHR$(13). Blank lines are dropped.
+    """
+    return b"".join(line.rstrip().encode("ascii", "replace") + b"\r"
+                    for line in generate_adv(game).split("\n") if line.rstrip())
+
+
+def game_slug(game):
+    return slugify(game.get("settings", {}).get("title", "game"))
+
+
+def disk_label(game):
+    """A 1541 disk name is 16 characters."""
+    return game_slug(game)[:16]
+
+
+def build_text_disk(game, runtime_source):
+    """The text target: the BASIC player and the game on one disk.
+
+    Returns {"disk", "prg", "adv"} as bytes. Raises c64build.BasicError if
+    the runtime won't tokenise, c64build.DiskError if the disk won't hold it.
+    """
+    import c64build
+    adv = adv_bytes(game)
+    # Byte-identical to `petcat -w2`; the runtime ships lowercase, which is
+    # what that expects.
+    prg = c64build.tokenize_basic(runtime_source)
+    image = c64build.D64(disk_label(game), TEXT_DISK_ID)
+    image.add_file(TEXT_PLAYER_NAME, prg, "prg")
+    image.add_file(TEXT_GAME_NAME, adv, "seq")
+    return {"disk": image.to_bytes(), "prg": prg, "adv": adv}
+
+
+def prepare_graphical_project(game, proj, stdlib_hjt, font_png=None, conv=None):
+    """Write the compiler's inputs into the folder `proj`.
+
+    The script, the room images (png/), stdlib.hjt and, if given, the font.
+    Without a font the script points at the engine repository's layout.
+    Returns the script's file name.
+    """
+    proj = Path(proj)
+    conv = conv or Converter(game, crop_offset=STORYTLLR_CROP_OFFSET)
+    proj.mkdir(parents=True, exist_ok=True)
+    (proj / "img").mkdir(exist_ok=True)
+    if font_png:
+        (proj / "png").mkdir(exist_ok=True)
+        shutil.copy(font_png, proj / "png" / "font.png")
+        font_ref = "png\\font.png"
+    else:
+        font_ref = "..\\shared\\png\\font.png"   # engine-repo layout
+    script = f"{game_slug(game)}.hjt"
+    (proj / script).write_text(conv.emit(font_path=font_ref), encoding="utf-8")
+    conv.write_room_images(proj / "png")
+    shutil.copy(stdlib_hjt, proj / "stdlib.hjt")
+    return script
+
+
+def graphical_disk(game, proj, player):
+    """The disk for a compiled project: player, font, game, room images.
+
+    `player` is storytllr64.prg's bytes; the rest is what the compiler wrote
+    into `proj`. All files are PRGs, named in lowercase.
+    """
+    import c64build
+    proj = Path(proj)
+    label = disk_label(game)
+    files = [(label, player),
+             ("font", (proj / "img" / "font").read_bytes()),
+             ("advcartridge", (proj / "advcartridge").read_bytes())]
+    for f in sorted((proj / "img").glob("room*")):
+        files.append((f.name, f.read_bytes()))
+    image = c64build.D64(label, GRAPHICAL_DISK_ID)
+    for name, data in files:
+        image.add_file(name.lower(), data, "prg")
+    return image.to_bytes()
+
+
+def build_graphical_disk(game, proj, compile_fn, stdlib_hjt, player,
+                         font_png=None, conv=None):
+    """The graphical target, start to finish, in the folder `proj`.
+
+    compile_fn(proj_dir, script) runs StoryTllr's compiler on `script` in
+    proj_dir and returns its console output as text. Raises CompileError if
+    it reports errors or writes no game, and c64build.DiskError if the disk
+    won't hold it. Returns the disk's bytes.
+    """
+    script = prepare_graphical_project(game, proj, stdlib_hjt, font_png, conv)
+    output = compile_fn(str(proj), script)
+    errors = [l for l in str(output).splitlines() if l.startswith("ERR")]
+    if errors or not (Path(proj) / "advcartridge").exists():
+        raise CompileError(errors)
+    return graphical_disk(game, proj, player)
+
+
 class AdventureEditor:
     def __init__(self, root):
         self.root = root
@@ -3880,23 +4059,8 @@ class AdventureEditor:
                 "adventure_editor_v7.py. Copy it back from the repository.")
             return
         try:
-            slug = slugify(self.game.get("settings", {}).get("title", "game"))
+            slug = game_slug(self.game)
             proj = build_root / slug
-            proj.mkdir(parents=True, exist_ok=True)
-            (proj / "img").mkdir(exist_ok=True)
-
-            # Self-contained project: font travels with it.
-            font_src = self._kit_engine_file("font.png")
-            if font_src:
-                (proj / "png").mkdir(exist_ok=True)
-                shutil.copy(font_src, proj / "png" / "font.png")
-                font_ref = "png\\font.png"
-            else:
-                font_ref = "..\\shared\\png\\font.png"  # engine-repo layout
-
-            script = conv.emit(font_path=font_ref)
-            (proj / f"{slug}.hjt").write_text(script, encoding="utf-8")
-            conv.write_room_images(proj / "png")
 
             stdlib_src = self._kit_engine_file("stdlib.hjt")
             if not stdlib_src:
@@ -3919,21 +4083,6 @@ class AdventureEditor:
                     "editor inside its kit folder (with the engine/ folder "
                     "next to it), or copy stdlib.hjt next to the editor.")
                 return
-            shutil.copy(stdlib_src, proj / "stdlib.hjt")
-
-            # Compile. (Note: this compiler's exit code is 1 on SUCCESS,
-            # so we judge by ERR lines and output files instead.)
-            r = subprocess.run([compiler, f"{slug}.hjt", "tmp.h", "advcartridge"],
-                               cwd=proj, capture_output=True, text=True)
-            output = (r.stdout or "") + (r.stderr or "")
-            err_lines = [l for l in output.splitlines() if l.startswith("ERR")]
-            if err_lines or not (proj / "advcartridge").exists():
-                messagebox.showerror(
-                    "Compile failed",
-                    "The game didn't compile:\n\n" + "\n".join(err_lines[:12]))
-                return
-
-            # Build the .d64.
             player = self._kit_engine_file("storytllr64.prg")
             if not player:
                 messagebox.showerror(
@@ -3941,26 +4090,31 @@ class AdventureEditor:
                     "storytllr64.prg wasn't found in the kit's engine/ "
                     "folder — the disk can't be built without it.")
                 return
-            # Written in pure Python (c64build), byte-identical to the
-            # c1541 calls this used to make; all files are PRGs, named in
-            # lowercase as c1541 needed them.
-            disk = proj / "bin" / f"{slug}.d64"
-            disk.parent.mkdir(exist_ok=True)
-            label = slug[:16]
-            writes = [(Path(player), label)]
-            writes.append((proj / "img" / "font", "font"))
-            writes.append((proj / "advcartridge", "advcartridge"))
-            for f in sorted((proj / "img").glob("room*")):
-                writes.append((f, f.name))
+
+            def compile_native(proj_dir, script):
+                # This compiler's exit code is 1 on SUCCESS, so the shared
+                # build judges by ERR lines and output files instead.
+                r = subprocess.run([compiler, script, "tmp.h", "advcartridge"],
+                                   cwd=proj_dir, capture_output=True, text=True)
+                return (r.stdout or "") + (r.stderr or "")
+
             try:
-                image = c64build.D64(label, "66")
-                for src, dst in writes:
-                    image.add_file(dst.lower(), src.read_bytes(), "prg")
-                image.save(disk)
+                image = build_graphical_disk(
+                    self.game, proj, compile_native, stdlib_src,
+                    Path(player).read_bytes(),
+                    font_png=self._kit_engine_file("font.png"), conv=conv)
+            except CompileError as e:
+                messagebox.showerror(
+                    "Compile failed",
+                    "The game didn't compile:\n\n" + "\n".join(e.errors[:12]))
+                return
             except c64build.DiskError as e:
                 messagebox.showerror("Disk build failed",
                                      f"Could not build the disk image:\n\n{e}")
                 return
+            disk = proj / "bin" / f"{slug}.d64"
+            disk.parent.mkdir(exist_ok=True)
+            disk.write_bytes(image)
 
             # Done — offer to play.
             x64sc = self._find_x64sc()
@@ -4032,47 +4186,29 @@ class AdventureEditor:
                 "adventure_editor_v7.py. Copy it back from the repository.")
             return
         try:
-            slug = slugify(self.game.get("settings", {}).get("title", "game"))
+            slug = game_slug(self.game)
             proj = build_root / f"{slug}-text"
             proj.mkdir(parents=True, exist_ok=True)
-
-            # The .adv needs CR line endings, not LF: the runtime reads a
-            # character at a time and ends a line on CHR$(13).
-            adv_text = self.generate_adv()
-            adv_bytes = b"".join(
-                line.rstrip().encode("ascii", "replace") + b"\r"
-                for line in adv_text.split("\n") if line.rstrip())
-            adv_path = proj / f"{slug}.adv"
-            adv_path.write_bytes(adv_bytes)
-
-            # Byte-identical to `petcat -w2`; the runtime ships lowercase,
-            # which is what that expects.
             try:
-                prg_bytes = c64build.tokenize_basic(
-                    Path(runtime).read_text(encoding="ascii"))
+                built = build_text_disk(
+                    self.game, Path(runtime).read_text(encoding="ascii"))
             except (c64build.BasicError, UnicodeDecodeError) as e:
                 messagebox.showerror(
                     "Tokenise failed",
                     f"The BASIC runtime couldn't be tokenised:\n\n{e}")
                 return
-            (proj / "advplay.prg").write_bytes(prg_bytes)
-
-            # A 1541 filename is 16 characters, and the runtime asks the
-            # player to type it. A truncated slug like "the_haunted_.adv" is
-            # unguessable, so the one-click build - which puts one game on
-            # one disk - always uses the same short name.
-            adv_name = "game.adv"
-            disk = proj / "bin" / f"{slug}.d64"
-            disk.parent.mkdir(exist_ok=True)
-            try:
-                image = c64build.D64(slug[:16], "01")
-                image.add_file("advplay", prg_bytes, "prg")
-                image.add_file(adv_name, adv_bytes, "seq")
-                image.save(disk)
             except c64build.DiskError as e:
                 messagebox.showerror("Disk build failed",
                                      f"Could not build the disk image:\n\n{e}")
                 return
+
+            # The pieces are kept next to the disk for a manual build.
+            (proj / f"{slug}.adv").write_bytes(built["adv"])
+            (proj / "advplay.prg").write_bytes(built["prg"])
+            disk = proj / "bin" / f"{slug}.d64"
+            disk.parent.mkdir(exist_ok=True)
+            disk.write_bytes(built["disk"])
+            adv_name = TEXT_GAME_NAME
 
             x64sc = self._find_x64sc()
             msg = (f"Your text adventure disk is ready!\n\nDisk image:\n{disk}\n\n"
@@ -4272,57 +4408,7 @@ class AdventureEditor:
             messagebox.showerror("Error", f"Failed to export: {e}")
     
     def generate_adv(self):
-        lines = []
-        
-        lines.append("[SETTINGS]")
-        for key, value in self.game["settings"].items():
-            lines.append(f"{key.upper()}={value}")
-        
-        lines.append("[ROOMS]")
-        lines.append("# Format: ID:Name:Description:North,South,East,West:")
-        room_ids = []
-        for key in self.game["rooms"].keys():
-            try:
-                room_ids.append((int(key), key))
-            except (ValueError, TypeError):
-                room_ids.append((999, key))
-        room_ids.sort()
-        
-        for _, room_id in room_ids:
-            room = self.game["rooms"][room_id]
-            exits = ",".join(map(str, room["exits"]))
-            name = room["name"].upper()
-            desc = room["description"].upper()
-            lines.append(f"{room_id}:{name}:{desc}:{exits}:")
-        
-        lines.append("[OBJECTS]")
-        lines.append("# Format: ID:StartRoom:Name:Description:Properties")
-        for obj_id in sorted(self.game["objects"].keys()):
-            obj = self.game["objects"][obj_id]
-            start_room = obj["start_room"]
-            name = obj["name"].upper()
-            desc = obj["description"].upper()
-            props = obj["properties"].upper()
-            lines.append(f"{obj_id}:{start_room}:{name}:{desc}:{props}")
-        
-        lines.append("[VOCABULARY]")
-        for word, synonyms in self.game["vocabulary"].items():
-            lines.append(f"{word.upper()}={','.join(synonyms)}")
-        
-        lines.append("[MESSAGES]")
-        for key, msg in self.game["messages"].items():
-            lines.append(f"{key}={msg.upper()}")
-        
-        lines.append("[RESPONSES]")
-        lines.append("# Format: COMMAND:CONDITION:MESSAGE:ACTION")
-        for resp in self.game["responses"]:
-            line = f"{resp['command']}:{resp['condition']}:{resp['message']}:{resp['action']}"
-            lines.append(line)
-
-        # The C64's default character set shows uppercase for codes 0x41-0x5A
-        # and graphics for lowercase, so mixed-case text renders as garbage.
-        # Author names in particular came through as line noise.
-        return "\n".join(lines).upper()
+        return generate_adv(self.game)
 
     LEGACY_SYSTEM_MESSAGE_KEYS = (
         "CANT_GO", "DONT_UNDERSTAND", "NOT_HERE", "INVENTORY_EMPTY",
