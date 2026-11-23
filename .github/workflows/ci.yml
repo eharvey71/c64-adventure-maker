@@ -162,9 +162,11 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: The sample castle builds identically in the browser
+        timeout-minutes: 5
         run: node web/test_browser.cjs
 
       - name: So does the castle with full-size art on every room
+        timeout-minutes: 5
         run: |
           python web/art_game.py "$RUNNER_TEMP/art_castle.json"
           node web/test_browser.cjs "$RUNNER_TEMP/art_castle.json"

@@ -27,21 +27,24 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
-(async () => {
+async function main() {
   fs.copyFileSync(game, path.join(DIST, "test_game.json"));
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const port = server.address().port;
-  const browser = await chromium.launch();
+  let browser;
   try {
+    browser = await chromium.launch();
     const page = await browser.newPage();
     page.on("pageerror", (e) => console.error("page error:", e.message));
+    page.on("console", (m) => { if (m.type() === "error") console.error("console:", m.text()); });
     await page.goto(`http://127.0.0.1:${port}/index.html?game=test_game.json`);
     await page.waitForFunction(() => window.result, null, { timeout: 180000 });
     const got = await page.evaluate(() => window.result);
-    if (got.error) throw new Error(got.error);
+    if (got.error) throw new Error("in the page: " + got.error);
 
     const python = process.env.PYTHON || "python3";
-    const want = JSON.parse(execFileSync(python, [path.join(WEB, "reference.py"), game]).toString());
+    const want = JSON.parse(execFileSync(python, [path.join(WEB, "reference.py"), game],
+                                         { timeout: 300000 }).toString());
 
     console.log(`Chromium ${browser.version()}, in-browser build took ${got.seconds}s`);
     let ok = true;
@@ -50,9 +53,15 @@ const server = http.createServer((req, res) => {
       ok = ok && same;
       console.log(`${k.padEnd(9)} ${same ? "IDENTICAL" : "DIFFERENT"}  browser ${got[k].slice(0, 16)}  desktop ${want[k].slice(0, 16)}`);
     }
-    process.exitCode = ok ? 0 : 1;
+    return ok ? 0 : 1;
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
+    server.closeAllConnections();
     server.close();
   }
-})().catch((e) => { console.error(e); process.exitCode = 1; });
+}
+
+// Always exit: anything left open (the server, a browser that failed to
+// start) would otherwise keep Node running with no output.
+main().then((code) => process.exit(code),
+            (e) => { console.error(e); process.exit(1); });
