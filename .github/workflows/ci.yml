@@ -116,3 +116,55 @@ jobs:
 
       - name: Compiler is executable
         run: test -x tools/script_compiler
+
+  # The editor's builds, run inside a real browser: StoryTllr's compiler
+  # built as WebAssembly with Emscripten, the editor's Python under Pyodide.
+  # Both disks must be byte-identical to the desktop editor's.
+  web:
+    name: Browser build (Emscripten)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EMSDK_VERSION: latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The native compiler, for the desktop side of the comparison, and
+      # the patched source the WebAssembly build uses.
+      - name: Build script_compiler
+        run: sh tools/setup_compiler.sh
+
+      # Emscripten's own installer, from the Emscripten project.
+      - name: Install Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
+
+      - name: Build the browser version
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcc --version | head -1
+          bash web/build.sh
+
+      - name: Install Chromium for the test
+        working-directory: web
+        run: |
+          npm install --no-save --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+
+      - name: The sample castle builds identically in the browser
+        run: node web/test_browser.cjs
+
+      - name: So does the castle with full-size art on every room
+        run: |
+          python web/art_game.py "$RUNNER_TEMP/art_castle.json"
+          node web/test_browser.cjs "$RUNNER_TEMP/art_castle.json"
