@@ -47,6 +47,19 @@ def responses_lines(raw, game_json):
     marks, body = ed.responses_report(raw, json.loads(game_json))
     return json.dumps({"marks": marks, "body": body})
 
+def import_scene(scenes_json, filename, raw):
+    game = {"scenes": json.loads(scenes_json)}
+    try:
+        sid = ed.add_koala_scene(game, filename, raw.to_bytes())
+    except ValueError as e:
+        return json.dumps({"ok": False, "error": str(e)})
+    return json.dumps({"ok": True, "sid": sid, "scene": game["scenes"][sid]})
+
+def scene_preview(koala_b64, crop_offset, out_path):
+    import base64
+    ppm = ed.koala_to_ppm_bytes(base64.b64decode(koala_b64), 1, 1, crop_offset)
+    Path(out_path).write_bytes(ppm[-160 * 200 * 3:])   # the pixels, after the header
+
 def capacity_lines(game_json):
     game = json.loads(game_json)
     return json.dumps({k: {"text": ed.capacity_text(k, n, limit), "over": n > limit}
@@ -73,6 +86,26 @@ export function capacity(game) {
 export function responsesReport(text, game) {
   if (!loaded) return null;
   return JSON.parse(loaded.globals.get("responses_lines")(text, JSON.stringify(game)));
+}
+
+/**
+ * Turn a Koala file into a scene, as the desktop's import does.
+ * Returns {ok, sid, scene} or {ok: false, error}.
+ */
+export async function importScene(scenes, fileName, bytes) {
+  const py = await startPython();
+  return JSON.parse(py.globals.get("import_scene")(JSON.stringify(scenes), fileName, bytes));
+}
+
+/**
+ * A scene as the desktop previews it: 160x200 RGB bytes, with the rows
+ * that don't reach the C64 dimmed and the band's edges marked.
+ */
+export async function scenePreview(koalaB64, cropOffset) {
+  const py = await startPython();
+  const out = "/builds/preview.rgb";
+  py.globals.get("scene_preview")(koalaB64, cropOffset, out);
+  return py.FS.readFile(out);
 }
 
 function copyTree(from, to, dir) {

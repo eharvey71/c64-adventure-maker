@@ -41,6 +41,14 @@ function check(ok, what, detail = "") {
 // Opening a file is asynchronous: wait for the page to finish, or give up.
 const settled = (promise) => promise.then(() => true, () => false);
 
+// A Koala file with its load address: the same bytes every run.
+function koalaFile() {
+  const body = Buffer.alloc(10001);
+  let x = 7;
+  for (let i = 0; i < body.length; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; body[i] = x >> 16; }
+  return { file: Buffer.concat([Buffer.from([0x00, 0x60]), body]), body };
+}
+
 const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 async function downloadFrom(page, buttonId) {
@@ -196,6 +204,44 @@ print(json.dumps({"marks": marks, "body": body}))`],
     if (shots) await page.screenshot({ path: path.join(shots, "editor-responses.png"), fullPage: true });
     await page.waitForTimeout(600);  // autosave runs after a short pause
 
+    stage("scenes");
+    const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "editor-test-"));
+    const koala = koalaFile();
+    fs.writeFileSync(path.join(tmp, "tower.kla"), koala.file);
+    fs.writeFileSync(path.join(tmp, "photo.kla"), Buffer.alloc(500));
+    await tab("scenes");
+    const scenes = page.locator("#scene-list li");
+    const sceneCount = Object.keys(source.scenes).length;
+    check(await scenes.count() === sceneCount, `the scene list shows all ${sceneCount} scenes`);
+    await page.setInputFiles("#scene-file", path.join(tmp, "tower.kla"));
+    await settled(page.waitForSelector('#scene-preview[data-state="ready"]', { timeout: 30000 }));
+    check(await scenes.count() === sceneCount + 1 && await page.textContent("#scene-id") === "TOWER",
+          "importing tower.kla adds scene TOWER");
+    // The preview marks the band's edges in pink, as the desktop's does.
+    const rowColour = (y) => page.$eval("#scene-preview", (c, y) =>
+      Array.from(c.getContext("2d").getImageData(5, y, 1, 1).data.slice(0, 3)).join(","), y);
+    check(await rowColour(48) === "255,0,128" && await rowColour(143) === "255,0,128",
+          "the preview marks the centred band, rows 48-143");
+    await page.$eval("#scene-band", (el) => { el.value = "104"; el.dispatchEvent(new Event("input")); });
+    await settled(page.waitForFunction(() =>
+      document.getElementById("scene-preview").dataset.state === "ready", null, { timeout: 30000 }));
+    check(await page.textContent("#scene-band-label") === "rows 104-199 of 200"
+          && await rowColour(104) === "255,0,128" && await rowColour(48) !== "255,0,128",
+          "moving the band moves the marked rows");
+    if (shots) await page.screenshot({ path: path.join(shots, "editor-scenes.png") });
+    await page.setInputFiles("#scene-file", path.join(tmp, "photo.kla"));
+    check(await settled(page.waitForSelector('#result[data-kind="error"]', { timeout: 10000 }))
+          && await scenes.count() === sceneCount + 1,
+          "a file that isn't a Koala image is refused");
+    await tab("rooms");
+    await items.first().click();
+    await page.selectOption("#room-scene", "TOWER");
+    await tab("scenes");
+    check((await page.textContent("#scene-usage")).startsWith("Used by: 1 ("),
+          "the scene says which room uses it");
+    await tab("rooms");
+    await page.waitForTimeout(600);  // autosave runs after a short pause
+
     stage("reloading: the work should still be there");
     await page.reload();
     await page.waitForSelector("#room-list li");
@@ -212,7 +258,7 @@ print(json.dumps({"marks": marks, "body": body}))`],
           "the saved file has the new room, with its exit", JSON.stringify(g.rooms[newId]));
     check(JSON.stringify(g.rooms["2"].exits) === JSON.stringify(source.rooms["2"].exits),
           "typing a letter into an exit leaves the exit as it was");
-    check(JSON.stringify(g.scenes) === JSON.stringify(source.scenes),
+    check(JSON.stringify(g.settings) === JSON.stringify(source.settings),
           "everything not edited is saved unchanged");
     check(!("SWORD" in g.objects) && g.objects.BLADE.name === "SHINY SWORD"
           && JSON.stringify(Object.keys(g.objects)) === JSON.stringify(
@@ -231,6 +277,30 @@ print(json.dumps({"marks": marks, "body": body}))`],
     check(JSON.stringify(g.responses) === JSON.stringify([...source.responses,
             { command: "WAVE WAND", condition: "AT 1", message: "YOU WAVE IT.", action: "TELEPORT 3" }]),
           "the saved responses are the old ones plus the new one, without the line that isn't a response");
+    const tower = g.scenes.TOWER || {};
+    check(tower.name === "tower" && tower.crop_offset === 104
+          && Buffer.from(tower.koala_b64 || "", "base64").equals(koala.body)
+          && g.rooms["1"].scene_id === "TOWER",
+          "the saved file has the scene, its band, and the room it's in");
+
+    stage("building the edited game: the same disk as the desktop's");
+    const savedPath = path.join(tmp, "edited.json");
+    fs.writeFileSync(savedPath, saved.bytes);
+    const wantEdited = JSON.parse(execFileSync(python, [path.join(WEB, "reference.py"), savedPath],
+                                                { timeout: 120000, stdio: ["ignore", "pipe", "inherit"] }).toString());
+    const gfxEdited = await downloadFrom(page, "build-graphical");
+    check(sha(gfxEdited.bytes) === wantEdited.graphical,
+          "the graphical disk, with the new scene, is byte-identical to the desktop's");
+    const textEdited = await downloadFrom(page, "build-text");
+    check(sha(textEdited.bytes) === wantEdited.text,
+          "so is the text disk, with every edit");
+
+    stage("deleting a scene that's in use");
+    await tab("scenes");
+    await page.click("#scene-delete");
+    await tab("rooms");
+    check(await scenes.count() === sceneCount && await page.inputValue("#room-scene") === "",
+          "deleting the scene removes it and clears it from its room");
 
     stage("opening something that isn't a game");
     const bad = path.join(require("os").tmpdir(), "not-a-game.json");

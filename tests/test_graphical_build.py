@@ -87,3 +87,34 @@ class TestTheEditorsBuild(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(COMPILER.exists(), "tools/script_compiler not built")
+class TestEmptyRoomDescription(unittest.TestCase):
+    """A room with no description used to crash StoryTllr's compiler."""
+
+    def build(self, game):
+        import subprocess
+        import tempfile
+
+        def compile_native(proj_dir, script):
+            r = subprocess.run([str(COMPILER), script, "tmp.h", "advcartridge"],
+                               cwd=proj_dir, capture_output=True, text=True)
+            return r.stdout + r.stderr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            return ed.build_graphical_disk(
+                game, tmp, compile_native, REPO / "engine" / "stdlib.hjt",
+                (REPO / "engine" / "storytllr64.prg").read_bytes(),
+                font_png=REPO / "engine" / "font.png")
+
+    def test_a_new_room_with_no_description_builds(self):
+        game = json.loads((REPO / "example_castle.json").read_text())
+        game["rooms"]["11"] = {"name": "NEW ROOM", "description": "",
+                               "exits": [2, 0, 0, 0], "scene_id": None}
+        self.assertTrue(self.build(game))
+
+    def test_so_does_one_of_only_spaces(self):
+        game = json.loads((REPO / "example_castle.json").read_text())
+        game["rooms"]["3"]["description"] = "   "
+        self.assertTrue(self.build(game))

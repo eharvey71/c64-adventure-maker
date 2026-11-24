@@ -247,6 +247,36 @@ def _dim_rows_outside_band(out, row_size, src_h, y_scale, crop_offset):
                     (v * BAND_DIM_NUM) // BAND_DIM_DEN for v in row)
 
 
+def add_koala_scene(game, filename, raw):
+    """Add a Koala image file to the game's scenes; return the new scene ID.
+
+    The ID comes from the file name, in capitals, made unique. Raises
+    ValueError when the bytes aren't a Koala image.
+    """
+    try:
+        payload = strip_koala_load_address(raw)
+        decode_koala_to_rgb(payload)        # raises if malformed
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(str(e)) from e
+    stem = Path(filename).stem
+    base = "".join(c for c in stem.upper() if c.isalnum() or c == "_") or "SCENE"
+    scenes = game.setdefault("scenes", {})
+    sid, n = base, 2
+    while sid in scenes:
+        sid = f"{base}_{n}"
+        n += 1
+    scenes[sid] = {
+        "name": stem,
+        "koala_b64": base64.b64encode(payload).decode("ascii"),
+        # Centre the visible band by default; the Scenes tab slider adjusts
+        # it and the preview shows exactly what will ship.
+        "crop_offset": CROP_CENTERED,
+    }
+    return sid
+
+
 def make_scene_photo(raw_bytes, x_scale=2, y_scale=1, crop_offset=None):
     """
     Build a tk.PhotoImage from Koala bytes. Caller must keep a reference
@@ -1059,7 +1089,11 @@ class Converter:
             room = self.rooms[rid]
             L.append(f"room:room{rid}")
             L.append(f"\tname:{room.get('name', f'ROOM {rid}')}")
-            L.append(f"\tdesc:{room.get('description', '')}")
+            # An empty desc: line crashes StoryTllr's compiler, so a room with
+            # no description leaves it out, as objects do.
+            desc = (room.get("description") or "").strip()
+            if desc:
+                L.append(f"\tdesc:{desc}")
             L.append(f"\timage:png\\room{int(rid):02d}_C64.png")
             L += self.emit_room_enter(rid, room)
 
@@ -1730,11 +1764,19 @@ TEXT_GAME_NAME = "game.adv"
 
 
 class CompileError(Exception):
-    """StoryTllr's compiler rejected the game; .errors holds its ERR lines."""
+    """StoryTllr's compiler rejected the game; .errors holds its ERR lines.
+
+    When it stopped without any (it crashed), .errors holds one sentence
+    saying so, so there is always something to show.
+    """
+
+    NO_REASON = ("The compiler stopped without making the game, and gave no "
+                 "reason. This is a bug in the build: please report it with "
+                 "your .json file.")
 
     def __init__(self, errors):
-        super().__init__("\n".join(errors) or "the compiler produced no game")
-        self.errors = list(errors)
+        self.errors = list(errors) or [self.NO_REASON]
+        super().__init__("\n".join(self.errors))
 
 
 def generate_adv(game):
@@ -3006,10 +3048,8 @@ class AdventureEditor:
         try:
             with open(path, "rb") as f:
                 raw = f.read()
-            # Validate by attempting to strip load address and decode
-            payload = strip_koala_load_address(raw)
-            decode_koala_to_rgb(payload)  # will raise if malformed
-        except Exception as e:
+            sid = add_koala_scene(self.game, path, raw)
+        except (OSError, ValueError) as e:
             messagebox.showerror(
                 "Import failed",
                 f"Couldn't read {Path(path).name} as a Koala image.\n\n{e}\n\n"
@@ -3017,23 +3057,6 @@ class AdventureEditor:
             )
             return
 
-        # Generate a scene id from the filename, deduplicating
-        base = Path(path).stem.upper()
-        base = "".join(c for c in base if c.isalnum() or c == "_") or "SCENE"
-        sid = base
-        n = 2
-        existing = self.game.setdefault("scenes", {})
-        while sid in existing:
-            sid = f"{base}_{n}"
-            n += 1
-
-        existing[sid] = {
-            "name": Path(path).stem,
-            "koala_b64": base64.b64encode(payload).decode("ascii"),
-            # Centre the visible band by default; the Scenes tab slider
-            # adjusts it and the preview shows exactly what will ship.
-            "crop_offset": CROP_CENTERED,
-        }
         self.refresh_scenes_list()
         # Select the newly-added scene
         for i in range(self.scenes_listbox.size()):

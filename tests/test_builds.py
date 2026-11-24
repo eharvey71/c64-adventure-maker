@@ -122,6 +122,12 @@ class TestGraphicalBuild(unittest.TestCase):
         with self.assertRaises(ed.CompileError):
             self.build(FakeCompiler(writes=False))
 
+    def test_a_crash_with_no_error_lines_still_says_what_happened(self):
+        with self.assertRaises(ed.CompileError) as cm:
+            self.build(FakeCompiler(output="", writes=False))
+        self.assertEqual(cm.exception.errors, [ed.CompileError.NO_REASON])
+        self.assertIn("gave no reason", str(cm.exception))
+
     def test_the_output_may_come_back_as_any_text_like_object(self):
         # the web page's compiler is JavaScript; Pyodide hands its string over
         class JsString:

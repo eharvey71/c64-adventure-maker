@@ -70,12 +70,43 @@
           <label>E <input id="room-exit-E" type="text" inputmode="numeric" size="3"></label>
           <label>W <input id="room-exit-W" type="text" inputmode="numeric" size="3"></label>
         </fieldset>
+        <label class="field scene-pick">Scene — the picture shown in this room (graphical build only)
+          <select id="room-scene"></select></label>
       </form>
     </div>
   </section>
 
   <section id="tab-map" role="tabpanel" class="later" hidden><p>The map comes in a later step.</p></section>
-  <section id="tab-scenes" role="tabpanel" class="later" hidden><p>Scenes come in a later step.</p></section>
+  <section id="tab-scenes" role="tabpanel" class="split" hidden>
+    <div class="list-pane">
+      <h2>Scenes</h2>
+      <p class="hint">Graphical build only. The text build can't show pictures, so it ignores scenes.</p>
+      <ul id="scene-list" class="item-list" role="listbox" aria-label="Scenes" tabindex="0"></ul>
+      <div class="list-actions">
+        <button type="button" id="scene-import">+ Import Koala…</button>
+        <button type="button" id="scene-delete">− Delete</button>
+        <input type="file" id="scene-file" accept=".koa,.kla,.bin,.prg" hidden>
+      </div>
+      <p class="hint">Koala files are 10001 or 10003 bytes, from tools like Multipaint or Dithertron.</p>
+    </div>
+    <div class="detail-pane">
+      <p id="scene-empty" class="hint">Pick a scene on the left, or import one.</p>
+      <form id="scene-details" onsubmit="return false" hidden>
+        <h2>Scene <span id="scene-id"></span></h2>
+        <label class="field">Name <input id="scene-name" type="text"></label>
+        <p class="hint">Preview at the C64's 160×200. Only the bright 96-row band reaches the C64.</p>
+        <canvas id="scene-preview" class="scene-preview" width="160" height="200"
+          role="img" aria-label="Scene preview"></canvas>
+        <div class="band">
+          <label for="scene-band">Visible band</label>
+          <input id="scene-band" type="range" min="0" max="104" step="8">
+          <span id="scene-band-label" class="hint"></span>
+          <button type="button" id="scene-center">Center</button>
+        </div>
+        <p id="scene-usage" class="hint"></p>
+      </form>
+    </div>
+  </section>
   <section id="tab-objects" role="tabpanel" class="split" hidden>
     <div class="list-pane">
       <h2>Objects</h2>

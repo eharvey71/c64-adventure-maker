@@ -35,7 +35,7 @@ h1 { font-size: 1.1rem; margin: 0; color: var(--accent); white-space: nowrap; }
 h2 { font-size: 1rem; margin: 0 0 .6rem; color: var(--accent); }
 .hint { color: var(--hint); font-size: .85rem; }
 
-button, input, textarea {
+button, input, textarea, select {
   font: inherit;
   color: var(--fg);
   background: var(--bg-light);
@@ -161,6 +161,23 @@ main { flex: 1; padding: 1rem; }
 .note { margin: -.4rem 0 .8rem; color: var(--error); font-size: .9rem; }
 
 .text-panel { max-width: 60rem; }
+
+/* -- scenes -- */
+select { padding: .35rem .45rem; }
+.scene-pick { margin-top: .8rem; }
+.scene-pick select { color: var(--fg); font-size: 1rem; }
+.scene-preview {
+  display: block;
+  width: 640px;
+  max-width: 100%;
+  aspect-ratio: 8 / 5;          /* C64 multicolour pixels are twice as wide */
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 4px;
+  margin: .4rem 0 .8rem;
+}
+.band { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; color: var(--hint); }
+.band input[type="range"] { flex: 1 1 12rem; accent-color: var(--teal); }
 
 /* -- responses: a gutter of marks that scrolls with the text -- */
 h3 { font-size: .9rem; margin: 1rem 0 .4rem; color: var(--hint); font-weight: 600; }

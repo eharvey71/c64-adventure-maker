@@ -1,7 +1,9 @@
 // The web editor's screens. The game is the same JSON the desktop editor
 // opens and saves; every build goes through the desktop's Python (python.js).
 
-import { startPython, buildText, buildGraphical, capacity, responsesReport } from "./python.js";
+import {
+  startPython, buildText, buildGraphical, capacity, responsesReport, importScene, scenePreview,
+} from "./python.js";
 
 const STORAGE_KEY = "c64-adventure-maker:game";
 const DIRECTIONS = ["N", "S", "E", "W"];
@@ -19,6 +21,7 @@ const newGame = () => ({
 let game = newGame();
 let selectedRoom = null;
 let selectedObject = null;
+let selectedScene = null;
 const $ = (id) => document.getElementById(id);
 
 // ------------------------------------------------------------------ data --
@@ -61,6 +64,11 @@ function roomIds() {
     const na = Number.isInteger(+a) ? +a : 999, nb = Number.isInteger(+b) ? +b : 999;
     return na - nb || a.localeCompare(b);
   });
+}
+
+/** Scene IDs in the desktop's order: alphabetical. */
+function sceneIds() {
+  return Object.keys(game.scenes).sort();
 }
 
 /** Object IDs in the desktop's order: alphabetical. */
@@ -197,6 +205,27 @@ function renderRoomDetails() {
   $("room-name").value = room.name;
   $("room-description").value = room.description;
   DIRECTIONS.forEach((d, i) => { $(`room-exit-${d}`).value = room.exits[i]; });
+  renderRoomScenePicker(room);
+}
+
+function renderRoomScenePicker(room) {
+  const select = $("room-scene");
+  const option = (value, label) => {
+    const o = document.createElement("option");
+    o.value = value;
+    o.textContent = label;
+    return o;
+  };
+  select.replaceChildren(option("", "(none)"));
+  for (const sid of sceneIds()) {
+    const name = game.scenes[sid].name;
+    select.append(option(sid, name ? `${sid}   ${name}` : sid));
+  }
+  // Keep a link to a scene that's gone, rather than silently dropping it.
+  if (room.scene_id && !(room.scene_id in game.scenes)) {
+    select.append(option(room.scene_id, `${room.scene_id} (missing)`));
+  }
+  select.value = room.scene_id ?? "";
 }
 
 function wireRooms() {
@@ -216,6 +245,10 @@ function wireRooms() {
       exits[i] = Math.max(0, intField(e.target.value, exits[i]));
       changed();
     });
+  });
+  $("room-scene").addEventListener("change", (e) => {
+    game.rooms[selectedRoom].scene_id = e.target.value || null;
+    changed();
   });
   $("room-add").addEventListener("click", () => {
     const numeric = Object.keys(game.rooms).map(Number).filter(Number.isInteger);
@@ -340,6 +373,138 @@ function wireObjects() {
   wireListKeys("object-list", objectIds, () => selectedObject, selectObject);
 }
 
+// ---------------------------------------------------------------- scenes --
+
+const CROP_ROWS = 96, CROP_MAX = 104, CROP_STEP = 8, CROP_CENTERED = 48;
+
+/** As the desktop's normalize_crop_offset: a legal, cell-aligned band start. */
+function snapCrop(value) {
+  const v = Math.max(0, Math.min(CROP_MAX, Math.trunc(Number(value)) || 0));
+  return v - (v % CROP_STEP);
+}
+
+/** A scene's band, defaulting as the desktop does when the file has none. */
+const sceneCrop = (scene) => snapCrop(scene.crop_offset ?? 0);
+
+function renderSceneList() {
+  const list = $("scene-list");
+  list.replaceChildren();
+  for (const sid of sceneIds()) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.dataset.id = sid;
+    const name = game.scenes[sid].name;
+    li.textContent = name ? `${sid}: ${name}` : sid;
+    li.setAttribute("aria-selected", String(sid === selectedScene));
+    li.addEventListener("click", () => selectScene(sid));
+    list.append(li);
+  }
+}
+
+function selectScene(sid) {
+  selectedScene = sid in game.scenes ? sid : null;
+  renderSceneList();
+  renderSceneDetails();
+}
+
+function roomsUsing(sid) {
+  return roomIds().filter((rid) => game.rooms[rid].scene_id === sid);
+}
+
+function renderSceneDetails() {
+  const scene = selectedScene && game.scenes[selectedScene];
+  $("scene-details").hidden = !scene;
+  $("scene-empty").hidden = Boolean(scene);
+  if (!scene) return;
+  $("scene-id").textContent = selectedScene;
+  $("scene-name").value = scene.name ?? "";
+  const crop = sceneCrop(scene);
+  $("scene-band").value = crop;
+  $("scene-band-label").textContent = `rows ${crop}-${crop + CROP_ROWS - 1} of 200`;
+  const used = roomsUsing(selectedScene);
+  $("scene-usage").textContent = used.length
+    ? "Used by: " + used.map((rid) => `${rid} (${game.rooms[rid].name})`).join(", ")
+    : "Not yet attached to any room.";
+  drawScenePreview();
+}
+
+let previewToken = 0;
+async function drawScenePreview() {
+  if ($("tab-scenes").hidden) return;          // drawn when the tab opens
+  const token = ++previewToken;
+  const canvas = $("scene-preview");
+  const ctx = canvas.getContext("2d");
+  const scene = game.scenes[selectedScene];
+  canvas.dataset.state = "drawing";
+  try {
+    const rgb = await scenePreview(scene.koala_b64 ?? "", sceneCrop(scene));
+    if (token !== previewToken) return;          // a newer preview took over
+    const img = ctx.createImageData(160, 200);
+    for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+      img.data[j] = rgb[i]; img.data[j + 1] = rgb[i + 1]; img.data[j + 2] = rgb[i + 2];
+      img.data[j + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    canvas.dataset.state = "ready";
+  } catch (err) {
+    if (token !== previewToken) return;
+    ctx.clearRect(0, 0, 160, 200);
+    canvas.dataset.state = "error";
+    showResult("error", `Couldn't show scene ${selectedScene}.`, [String(err.message || err)]);
+  }
+}
+
+function setCrop(value) {
+  const scene = game.scenes[selectedScene];
+  const crop = snapCrop(value);
+  if (crop === sceneCrop(scene) && scene.crop_offset !== undefined) return;
+  scene.crop_offset = crop;
+  changed();
+  renderSceneDetails();
+}
+
+function wireScenes() {
+  $("scene-name").addEventListener("input", (e) => {
+    game.scenes[selectedScene].name = e.target.value;
+    const li = $("scene-list").querySelector(`[data-id="${CSS.escape(selectedScene)}"]`);
+    if (li) li.textContent = e.target.value ? `${selectedScene}: ${e.target.value}` : selectedScene;
+    changed();
+  });
+  $("scene-band").addEventListener("input", (e) => setCrop(e.target.value));
+  $("scene-center").addEventListener("click", () => setCrop(CROP_CENTERED));
+  $("scene-import").addEventListener("click", () => $("scene-file").click());
+  $("scene-file").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const result = await importScene(game.scenes, file.name, new Uint8Array(await file.arrayBuffer()));
+    if (!result.ok) {
+      showResult("error", `Couldn't read ${file.name} as a Koala image.`, [result.error]);
+      return;
+    }
+    game.scenes[result.sid] = result.scene;
+    changed();
+    selectScene(result.sid);
+    renderRoomDetails();
+    showResult("info", `Imported ${file.name} as scene ${result.sid}.`);
+  });
+  $("scene-delete").addEventListener("click", () => {
+    if (!selectedScene) return;
+    const used = roomsUsing(selectedScene);
+    const question = used.length
+      ? `Scene ${selectedScene} is used by ${used.length} room(s): ${used.join(", ")}.\n\n`
+        + "Deleting will clear the scene from those rooms. Continue?"
+      : `Delete scene ${selectedScene}?`;
+    if (!confirm(question)) return;
+    for (const rid of used) game.rooms[rid].scene_id = null;
+    delete game.scenes[selectedScene];
+    changed();
+    selectScene(null);
+    renderRoomDetails();
+  });
+  wireListKeys("scene-list", sceneIds, () => selectedScene, selectScene);
+}
+
 // ----------------------------------------------------- vocabulary/messages --
 // Plain text, one entry per line, read exactly as the desktop reads it.
 
@@ -442,6 +607,7 @@ function wireTabs() {
       }
       // Its notes depend on the objects, which may have changed meanwhile.
       if (tab.getAttribute("aria-controls") === "tab-responses") refreshResponseReport();
+      if (tab.getAttribute("aria-controls") === "tab-scenes") renderSceneDetails();
     });
   }
 }
@@ -452,6 +618,7 @@ function loadGame(data, source) {
   game = normalise(data);
   selectedRoom = roomIds()[0] ?? null;
   selectedObject = objectIds()[0] ?? null;
+  selectedScene = sceneIds()[0] ?? null;
   renderAll();
   saveLocally();
   showResult("info", `Opened ${source}.`);
@@ -533,6 +700,8 @@ function renderAll() {
   renderRoomDetails();
   renderObjectList();
   renderObjectDetails();
+  renderSceneList();
+  renderSceneDetails();
   renderTextPanels();
   refreshCapacity();
 }
@@ -541,6 +710,7 @@ function start() {
   wireSettings();
   wireRooms();
   wireObjects();
+  wireScenes();
   wireTextPanels();
   wireTabs();
   wireFiles();
@@ -548,6 +718,7 @@ function start() {
   game = restore() ?? newGame();
   selectedRoom = roomIds()[0] ?? null;
   selectedObject = objectIds()[0] ?? null;
+  selectedScene = sceneIds()[0] ?? null;
   renderAll();
   // Python loads in the background, so the first build doesn't wait for it.
   startPython((msg) => { $("python-status").textContent = msg; })
